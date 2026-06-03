@@ -58,7 +58,7 @@ deploy:dev:
   only:
     - main
   script:
-    - echo "TODO (mentor): SSH ao servidor interno, atualizar código, reiniciar serviço."
+    - 'echo "TODO (mentor): SSH ao servidor interno, atualizar codigo, reiniciar servico."'
     # Exemplo do que vai ficar aqui:
     # - apt-get update && apt-get install -y openssh-client
     # - eval $(ssh-agent -s)

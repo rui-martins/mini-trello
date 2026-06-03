@@ -1,0 +1,4 @@
+# Esta pasta vai conter o vosso schema.prisma e as migrações.
+# Para começar:
+#   1. Criar prisma/schema.prisma (ver secção 4 da spec)
+#   2. Correr: npx prisma migrate dev --name init

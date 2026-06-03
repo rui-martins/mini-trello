@@ -1,0 +1,71 @@
+# Pipeline base do Mini-Trello.
+# O mentor (Rui) refina os detalhes de deploy quando o servidor interno estiver pronto.
+# Para os estagiários: basta que esta pipeline fique verde antes do merge.
+
+stages:
+  - lint
+  - build
+  - deploy
+
+default:
+  image: node:24-bookworm-slim
+
+variables:
+  npm_config_cache: "$CI_PROJECT_DIR/.npm"
+
+.cache_api: &cache_api
+  cache:
+    key: api-$CI_COMMIT_REF_SLUG
+    paths:
+      - apps/api/node_modules
+
+.cache_web: &cache_web
+  cache:
+    key: web-$CI_COMMIT_REF_SLUG
+    paths:
+      - apps/web/node_modules
+
+lint:api:
+  <<: *cache_api
+  stage: lint
+  script:
+    - cd apps/api
+    - npm ci
+    - npm run lint
+
+lint:web:
+  <<: *cache_web
+  stage: lint
+  script:
+    - cd apps/web
+    - npm ci
+    - npm run lint
+
+build:web:
+  <<: *cache_web
+  stage: build
+  script:
+    - cd apps/web
+    - npm ci
+    - npm run build
+  artifacts:
+    paths:
+      - apps/web/dist
+    expire_in: 1 day
+
+deploy:dev:
+  stage: deploy
+  only:
+    - main
+  script:
+    - echo "TODO (mentor): SSH ao servidor interno, atualizar código, reiniciar serviço."
+    # Exemplo do que vai ficar aqui:
+    # - apt-get update && apt-get install -y openssh-client
+    # - eval $(ssh-agent -s)
+    # - echo "$SSH_PRIVATE_KEY" | tr -d '\r' | ssh-add -
+    # - ssh -o StrictHostKeyChecking=no $DEPLOY_USER@$DEPLOY_HOST "
+    #     cd /opt/mini-trello &&
+    #     git pull &&
+    #     cd apps/api && npm ci --omit=dev && npx prisma migrate deploy && pm2 reload api &&
+    #     cd ../web && npm ci && npm run build
+    #   "

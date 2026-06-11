@@ -13,12 +13,44 @@ function getStoredUser() {
   }
 }
 
+// Verifica se um token JWT expirou
+// Decodifica sem validar assinatura (apenas lê o payload)
+// Compara o tempo de expiração com o horário atual
+function isTokenExpired(token) {
+  if (!token) return true;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return true;
+    
+    const payload = JSON.parse(atob(parts[1]));
+    const expiryTime = payload.exp * 1000; // Convert to milliseconds
+    const isExpired = Date.now() >= expiryTime;
+    
+    if (isExpired) {
+      console.log('[AUTH] Token expirou:', new Date(expiryTime), 'vs', new Date());
+    }
+    
+    return isExpired;
+  } catch (err) {
+    console.error('[AUTH] Erro ao decodificar token:', err);
+    return true;
+  }
+}
+
 // Lê o token JWT guardado no localStorage
 // Este token é enviado ao backend em requests futuras para autenticação
 function getStoredToken() {
   try {
     const session = JSON.parse(localStorage.getItem(SESSION_KEY) ?? 'null');
-    return session?.token ?? null;
+    const token = session?.token ?? null;
+    
+    // Se o token expirou, faz logout automático
+    if (token && isTokenExpired(token)) {
+      logout();
+      return null;
+    }
+    
+    return token;
   } catch {
     return null;
   }
@@ -91,7 +123,12 @@ export function logout() {
 }
 
 // Devolve o utilizador atualmente conectado (ou null se não existir)
+// Valida se o token expirou antes de devolver o utilizador
 export function getCurrentUser() {
+  const token = getStoredToken();
+  if (!token) {
+    return null;
+  }
   return getStoredUser();
 }
 
@@ -99,4 +136,14 @@ export function getCurrentUser() {
 // Será necessário enviar este token em requests protegidas
 export function getToken() {
   return getStoredToken();
+}
+
+// Retorna headers com o token JWT para requests autenticados
+// Inclui automaticamente validação de expiração
+export function getAuthHeaders() {
+  const token = getStoredToken();
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': token ? `Bearer ${token}` : ''
+  };
 }

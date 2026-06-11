@@ -2,7 +2,7 @@ import { LayoutDashboard, LogOut, ShieldCheck } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import Toast from '../components/Toast';
-import { getCurrentUser, logout } from '../lib/auth-store';
+import { getCurrentUser, logout, getToken } from '../lib/auth-store';
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -18,6 +18,25 @@ export function Dashboard() {
       }
     } catch {}
   }, []);
+
+  // Verifica expiração imediatamente e depois a cada 5 segundos
+  // Se o token expirou, faz logout automático e redireciona para login
+  useEffect(() => {
+    const checkTokenExpiry = () => {
+      const token = getToken();
+      if (!token) {
+        logout();
+        navigate('/login', { replace: true });
+      }
+    };
+
+    // Verifica imediatamente
+    checkTokenExpiry();
+    
+    // E depois a cada 5 segundos
+    const interval = setInterval(checkTokenExpiry, 5000);
+    return () => clearInterval(interval);
+  }, [navigate]);
 
   function handleLogout() {
     logout();

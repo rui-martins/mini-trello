@@ -10,7 +10,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key';
 
 // Define o tempo de expiração do token JWT (obrigatoriamente 1 hora)
 // Após 1h, o token expira e o utilizador tem que fazer login novamente
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1m';
 
 export async function register(req, res, next) {
   try {

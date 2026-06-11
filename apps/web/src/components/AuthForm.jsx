@@ -11,6 +11,7 @@ export function AuthForm({ mode }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({ email: null, name: null, password: null });
 
   // Determina se é modo registo ou login
   const isRegister = mode === 'register';
@@ -21,17 +22,33 @@ export function AuthForm({ mode }) {
     setError(null);
     setLoading(true);
 
+    // Validação frontend personalizada (substitui a validação nativa do browser)
+    const trimmedEmail = email.trim();
+    if (isRegister) {
+      if (name.trim().length < 2) {
+        setFieldErrors((prev) => ({ ...prev, name: 'Indica o teu nome.' }));
+        setLoading(false);
+        return;
+      }
+      if (password.length < 6) {
+        setFieldErrors((prev) => ({ ...prev, password: 'A password tem de ter pelo menos 6 caracteres.' }));
+        setLoading(false);
+        return;
+      }
+    } else {
+      if (!trimmedEmail.includes('@')) {
+        setFieldErrors((prev) => ({ ...prev, email: 'Inclui um "@" no endereço de email.' }));
+        setLoading(false);
+        return;
+      }
+    }
+
     try {
       // Chama register() ou login() dependendo do mode
       // Ambas as funções fazem fetch à API e guardam o token no localStorage
       if (isRegister) {
-        // Validações frontend simples antes de enviar
-        if (name.trim().length < 2) throw new AppError(400, 'Indica o teu nome.');
-        if (password.length < 6) throw new AppError(400, 'A password tem de ter pelo menos 6 caracteres.');
-        // Chama a função register que faz POST à API /auth/register
         await register(name.trim(), email.trim(), password);
       } else {
-        // Chama a função login que faz POST à API /auth/login
         await login(email.trim(), password);
       }
 
@@ -68,13 +85,16 @@ export function AuthForm({ mode }) {
               : 'Bem-vindo de volta. Entra para continuar.'}
           </p>
 
-          <form onSubmit={onSubmit} className="mt-6 space-y-4">
+          <form onSubmit={onSubmit} noValidate className="mt-6 space-y-4">
             {isRegister && (
-              <Field icon={<UserIcon className="h-4 w-4" />} label="Nome">
+              <Field icon={<UserIcon className="h-4 w-4" />} label="Nome" error={fieldErrors.name}>
                 <input
                   type="text"
                   value={name}
-                  onChange={(event) => setName(event.target.value)}
+                  onChange={(event) => {
+                    setName(event.target.value);
+                    setFieldErrors((prev) => ({ ...prev, name: null }));
+                  }}
                   required
                   maxLength={60}
                   placeholder="O teu nome"
@@ -83,11 +103,14 @@ export function AuthForm({ mode }) {
               </Field>
             )}
 
-            <Field icon={<Mail className="h-4 w-4" />} label="Email">
+            <Field icon={<Mail className="h-4 w-4" />} label="Email" error={fieldErrors.email}>
               <input
                 type="email"
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  setFieldErrors((prev) => ({ ...prev, email: null }));
+                }}
                 required
                 maxLength={120}
                 placeholder="tu@exemplo.com"
@@ -95,11 +118,14 @@ export function AuthForm({ mode }) {
               />
             </Field>
 
-            <Field icon={<Lock className="h-4 w-4" />} label="Password">
+            <Field icon={<Lock className="h-4 w-4" />} label="Password" error={fieldErrors.password}>
               <input
                 type="password"
                 value={password}
-                onChange={(event) => setPassword(event.target.value)}
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                  setFieldErrors((prev) => ({ ...prev, password: null }));
+                }}
                 required
                 minLength={isRegister ? 6 : 1}
                 maxLength={120}
@@ -145,7 +171,7 @@ export function AuthForm({ mode }) {
 
 // Componente reutilizável para campos do formulário com ícone
 // Mostra label, ícone à esquerda e o input field
-function Field({ icon, label, children }) {
+function Field({ icon, label, children, error }) {
   return (
     <label className="block">
       <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{label}</span>
@@ -153,6 +179,14 @@ function Field({ icon, label, children }) {
         <span className="text-slate-400">{icon}</span>
         {children}
       </div>
+      {error && (
+        <div role="alert" className="mt-2 inline-flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-400/10 px-3 py-2 text-sm text-amber-100">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-amber-300" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.681-1.36 3.446 0l6.518 11.59c.75 1.335-.213 2.985-1.723 2.985H3.462c-1.51 0-2.473-1.65-1.723-2.985L8.257 3.1zM11 13a1 1 0 10-2 0 1 1 0 002 0zm-1-8a1 1 0 00-.993.883L9 6v4a1 1 0 001.993.117L11 10V6a1 1 0 00-1-1z" clipRule="evenodd" />
+          </svg>
+          <span>{error}</span>
+        </div>
+      )}
     </label>
   );
 }

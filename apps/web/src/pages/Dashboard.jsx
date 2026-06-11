@@ -1,10 +1,23 @@
 import { LayoutDashboard, LogOut, ShieldCheck } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import Toast from '../components/Toast';
 import { getCurrentUser, logout } from '../lib/auth-store';
 
 export function Dashboard() {
   const navigate = useNavigate();
   const user = getCurrentUser();
+  const [flash, setFlash] = useState(null);
+
+  useEffect(() => {
+    try {
+      const msg = sessionStorage.getItem('flashMessage');
+      if (msg) {
+        setFlash(msg);
+        sessionStorage.removeItem('flashMessage');
+      }
+    } catch {}
+  }, []);
 
   function handleLogout() {
     logout();
@@ -24,6 +37,7 @@ export function Dashboard() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50">
+      {flash && <Toast message={flash} onClose={() => setFlash(null)} />}
       <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">

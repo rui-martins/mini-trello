@@ -1,10 +1,20 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { AuthForm } from './components/AuthForm';
 import { Dashboard } from './pages/Dashboard';
 import { getCurrentUser } from './lib/auth-store';
 
 export default function App() {
-  const currentUser = getCurrentUser();
+  const [currentUser, setCurrentUser] = useState(() => getCurrentUser());
+
+  useEffect(() => {
+    function onSession() {
+      setCurrentUser(getCurrentUser());
+    }
+
+    window.addEventListener('sessionChanged', onSession);
+    return () => window.removeEventListener('sessionChanged', onSession);
+  }, []);
 
   return (
     <Routes>

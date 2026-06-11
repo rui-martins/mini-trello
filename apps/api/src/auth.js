@@ -2,6 +2,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import prisma from './db.js';
 import { registerSchema, loginSchema } from './schemas.js';
+import AppError from './errors.js';
 
 // Lê a variável de ambiente JWT_SECRET (chave secreta para assinar tokens)
 // Se não existir, usa 'dev-secret-key' como fallback (apenas para dev)
@@ -11,7 +12,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-key';
 // Após 1h, o token expira e o utilizador tem que fazer login novamente
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
 
-export async function register(req, res) {
+export async function register(req, res, next) {
   try {
     // Valida os dados recebidos usando Zod (name, email, password)
     // Se falhar, lança um erro automaticamente
@@ -24,7 +25,7 @@ export async function register(req, res) {
     });
 
     if (existingUser) {
-      return res.status(409).json({ error: 'Este email já está registado.' });
+      return next(new AppError(409, 'Este email já está registado.'));
     }
 
     // Transforma a password em hash usando bcrypt (10 rounds de salt)
@@ -52,20 +53,17 @@ export async function register(req, res) {
     // O frontend guarda este token e envia-o em requests futuras para autenticação
     const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 
-    res.status(201).json({
-      user,
-      token,
-    });
+    res.status(201).json({ user, token });
   } catch (err) {
     // Trata erros de validação Zod
     if (err.name === 'ZodError') {
-      return res.status(400).json({ error: err.errors[0].message });
+      return next(new AppError(400, err.errors[0].message));
     }
-    res.status(500).json({ error: 'Erro ao registar.' });
+    return next(new AppError(500, 'Erro ao registar.'));
   }
 }
 
-export async function login(req, res) {
+export async function login(req, res, next) {
   try {
     // Valida os dados recebidos (email, password)
     const body = loginSchema.parse(req.body);
@@ -76,7 +74,7 @@ export async function login(req, res) {
     });
 
     if (!user) {
-      return res.status(401).json({ error: 'Email ou password inválidos.' });
+      return next(new AppError(401, 'Email ou password inválidos.'));
     }
 
     // Compara a password enviada com o hash guardado na BD
@@ -85,26 +83,19 @@ export async function login(req, res) {
     const isValidPassword = await bcrypt.compare(body.password, user.passwordHash);
 
     if (!isValidPassword) {
-      return res.status(401).json({ error: 'Email ou password inválidos.' });
+      return next(new AppError(401, 'Email ou password inválidos.'));
     }
 
     // Se chegou aqui, a password está correta
     // Gera um novo token JWT que expira em 1h
     const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 
-    res.json({
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-      },
-      token,
-    });
+    res.json({ user: { id: user.id, name: user.name, email: user.email }, token });
   } catch (err) {
     // Trata erros de validação Zod
     if (err.name === 'ZodError') {
-      return res.status(400).json({ error: err.errors[0].message });
+      return next(new AppError(400, err.errors[0].message));
     }
-    res.status(500).json({ error: 'Erro ao fazer login.' });
+    return next(new AppError(500, 'Erro ao fazer login.'));
   }
 }

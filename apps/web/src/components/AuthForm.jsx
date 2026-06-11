@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { KanbanSquare, Lock, LogIn, Mail, UserPlus, User as UserIcon } from 'lucide-react';
 import { login, register } from '../lib/auth-store';
+import AppError from '../lib/AppError';
 
 export function AuthForm({ mode }) {
   const navigate = useNavigate();
@@ -25,8 +26,8 @@ export function AuthForm({ mode }) {
       // Ambas as funções fazem fetch à API e guardam o token no localStorage
       if (isRegister) {
         // Validações frontend simples antes de enviar
-        if (name.trim().length < 2) throw new Error('Indica o teu nome.');
-        if (password.length < 6) throw new Error('A password tem de ter pelo menos 6 caracteres.');
+        if (name.trim().length < 2) throw new AppError(400, 'Indica o teu nome.');
+        if (password.length < 6) throw new AppError(400, 'A password tem de ter pelo menos 6 caracteres.');
         // Chama a função register que faz POST à API /auth/register
         await register(name.trim(), email.trim(), password);
       } else {
@@ -35,6 +36,10 @@ export function AuthForm({ mode }) {
       }
 
       // Se chegou aqui, o registo/login foi bem-sucedido
+      // Grava uma mensagem temporária para mostrar no dashboard
+      try {
+        sessionStorage.setItem('flashMessage', isRegister ? 'Conta criada com sucesso.' : 'Iniciada sessão com sucesso.');
+      } catch {}
       // Redireciona para o dashboard
       navigate('/dashboard', { replace: true });
     } catch (err) {

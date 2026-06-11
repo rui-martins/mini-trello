@@ -28,10 +28,10 @@ export function AuthForm({ mode }) {
         if (name.trim().length < 2) throw new Error('Indica o teu nome.');
         if (password.length < 6) throw new Error('A password tem de ter pelo menos 6 caracteres.');
         // Chama a função register que faz POST à API /auth/register
-        register(name.trim(), email.trim(), password);
+        await register(name.trim(), email.trim(), password);
       } else {
         // Chama a função login que faz POST à API /auth/login
-        login(email.trim(), password);
+        await login(email.trim(), password);
       }
 
       // Se chegou aqui, o registo/login foi bem-sucedido

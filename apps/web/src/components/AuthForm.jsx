@@ -139,7 +139,7 @@ export function AuthForm({ mode }) {
             <button
               type="submit"
               disabled={loading}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-400 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-cyan-400 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
             >
               {isRegister ? <UserPlus className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
               {loading ? 'A processar…' : isRegister ? 'Criar conta' : 'Entrar'}

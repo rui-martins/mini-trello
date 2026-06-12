@@ -71,7 +71,7 @@ export function Dashboard() {
           <button
             type="button"
             onClick={handleLogout}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-medium text-slate-100 transition hover:bg-slate-700"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-medium text-slate-100 transition hover:bg-slate-700 cursor-pointer"
           >
             <LogOut className="h-4 w-4" />
             Sair

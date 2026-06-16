@@ -95,6 +95,15 @@ export function Dashboard() {
           </div>
         </section>
 
+        <section>
+          <h3 className="text-xl font-semibold text-white mb-4">Os teus Boards (mock)</h3>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Link to="/boards/b1" className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 text-slate-100 hover:bg-slate-800">Projeto Pessoal (privado)</Link>
+            <Link to="/boards/b2" className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 text-slate-100 hover:bg-slate-800">Trabalho (privado)</Link>
+            <Link to="/boards/b3" className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 text-slate-100 hover:bg-slate-800">Open Source (público)</Link>
+          </div>
+        </section>
+
         <section className="grid gap-6 md:grid-cols-2">
           <article className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6 shadow-2xl shadow-black/30">
             <h3 className="text-xl font-semibold text-white">O que está a funcionar</h3>

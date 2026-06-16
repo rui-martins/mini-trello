@@ -1,0 +1,56 @@
+name: PROD — manual / rollback
+
+# Deploy manual de PROD para uma versão à escolha (rollback ou redeploy).
+# Corre em Actions → "PROD — manual / rollback" → Run workflow, e indica o
+# `tag` (SHA curto de uma build anterior, ou "latest").
+# Como aponta para o Environment "production", também respeita o Required
+# reviewers: fica em pausa à espera do teu Approve.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Imagem a promover (SHA curto, ex. 1a2b3c4, ou 'latest')"
+        required: true
+        default: latest
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy-prod:
+    name: Deploy to PROD
+    runs-on: ubuntu-latest
+    environment: production # usado para histórico de deployments
+    env:
+      DEPLOY_DIR: /opt/mini-trello-prod
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:github
+
+      - name: Prepare SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+      - name: Sync compose file
+        run: |
+          scp -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new \
+            docker-compose.yml \
+            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ env.DEPLOY_DIR }}/docker-compose.yml
+
+      - name: Pull & restart
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new \
+            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "cd ${{ env.DEPLOY_DIR }} \
+             && IMAGE_TAG=${{ inputs.tag }} docker compose pull \
+             && IMAGE_TAG=${{ inputs.tag }} docker compose up -d \
+             && docker image prune -f"

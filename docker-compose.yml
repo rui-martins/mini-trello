@@ -1,0 +1,56 @@
+# Stack do Mini-Trello (serve para DEV e PROD).
+#
+# No servidor cada ambiente vive na sua pasta, cada uma com o seu .env:
+#   /opt/mini-trello-prod  (WEB_PORT=8080)
+#   /opt/mini-trello-dev   (WEB_PORT=8081)
+# O nome do projeto Docker (e os volumes/containers) é derivado do nome da
+# pasta, por isso os dois ambientes ficam isolados — NÃO definimos `name:` aqui.
+# O CI publica as imagens no GHCR e o deploy faz `docker compose pull && up -d`.
+#
+# Para correr/testar localmente (build a partir do código):
+#   cp deploy/.env.example .env   # e preencher
+#   docker compose up --build
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    # REGISTRY ex.: ghcr.io/o-teu-utilizador  (tudo minúsculas)
+    image: ${REGISTRY}/mini-trello-api:${IMAGE_TAG:-latest}
+    build: ./apps/api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-2h}
+      PORT: 3000
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    image: ${REGISTRY}/mini-trello-web:${IMAGE_TAG:-latest}
+    build: ./apps/web
+    restart: unless-stopped
+    # Só escuta em localhost: quem expõe à internet é o Tailscale Funnel.
+    # WEB_PORT difere por ambiente (8080 prod, 8081 dev) — vem do .env.
+    ports:
+      - '127.0.0.1:${WEB_PORT}:80'
+    depends_on:
+      - api
+
+volumes:
+  db_data:

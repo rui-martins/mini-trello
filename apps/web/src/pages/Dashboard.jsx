@@ -2,12 +2,15 @@ import { LayoutDashboard, LogOut, ShieldCheck } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import Toast from '../components/Toast';
-import { getCurrentUser, logout, getToken } from '../lib/auth-store';
+import NewBoardModal from '../components/NewBoardModal';
+import { getCurrentUser, logout, getToken, getAuthHeaders } from '../lib/auth-store';
 
 export function Dashboard() {
   const navigate = useNavigate();
   const user = getCurrentUser();
   const [flash, setFlash] = useState(null);
+  const [boards, setBoards] = useState([]);
+  const [showNewBoardModal, setShowNewBoardModal] = useState(false);
 
   useEffect(() => {
     try {
@@ -17,6 +20,21 @@ export function Dashboard() {
         sessionStorage.removeItem('flashMessage');
       }
     } catch {}
+  }, []);
+
+  // Carrega os boards do backend (se autenticado)
+  useEffect(() => {
+    async function loadBoards() {
+      try {
+        const res = await fetch('/api/boards', { headers: getAuthHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        setBoards(data);
+      } catch (err) {
+        // ignore for now
+      }
+    }
+    loadBoards();
   }, []);
 
   // Verifica expiração imediatamente e depois a cada 5 segundos
@@ -92,6 +110,56 @@ export function Dashboard() {
                 Esta versão já inclui login, registo e um dashboard simples em frontend, sem base de dados, para poderes continuar a desenvolver a app.
               </p>
             </div>
+          </div>
+        </section>
+
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xl font-semibold text-white">Os teus Boards</h3>
+            <button
+              type="button"
+              onClick={() => setShowNewBoardModal(true)}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-3 py-1 text-sm font-medium text-slate-100 hover:bg-slate-700"
+            >
+              Novo Board
+            </button>
+          </div>
+
+          <NewBoardModal
+            open={showNewBoardModal}
+            onClose={() => setShowNewBoardModal(false)}
+            onCreate={async (title) => {
+              try {
+                const res = await fetch('/api/boards', {
+                  method: 'POST',
+                  headers: getAuthHeaders(),
+                  body: JSON.stringify({ title }),
+                });
+                if (!res.ok) {
+                  const err = await res.json().catch(() => ({}));
+                  throw new Error(err.error || 'Erro ao criar board');
+                }
+                const board = await res.json();
+                setBoards((prev) => [...prev, board]);
+              } catch (err) {
+                setFlash(err.message || 'Erro ao criar board');
+                throw err;
+              }
+            }}
+          />
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {boards.length === 0 ? (
+              <>
+                <Link to="/boards/b1" className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 text-slate-100 hover:bg-slate-800">Projeto Pessoal (privado)</Link>
+                <Link to="/boards/b2" className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 text-slate-100 hover:bg-slate-800">Trabalho (privado)</Link>
+                <Link to="/boards/b3" className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 text-slate-100 hover:bg-slate-800">Open Source (público)</Link>
+              </>
+            ) : (
+              boards.map((b) => (
+                <Link key={b.id} to={`/boards/${b.id}`} className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 text-slate-100 hover:bg-slate-800">{b.title}</Link>
+              ))
+            )}
           </div>
         </section>
 

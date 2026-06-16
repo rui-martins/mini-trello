@@ -19,3 +19,8 @@ export const loginSchema = z.object({
   email: z.string().email('Email inválido'),
   password: z.string().min(1, 'Password obrigatória'),
 });
+
+// Schema para criação de boards
+export const createBoardSchema = z.object({
+  title: z.string().min(1, 'Título do board é obrigatório'),
+});

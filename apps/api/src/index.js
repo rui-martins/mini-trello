@@ -1,7 +1,9 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { register, login } from './auth.js';
+import { register, login, authenticate } from './auth.js';
+import prisma from './db.js';
+import { createBoardSchema } from './schemas.js';
 import AppError from './errors.js';
 
 const app = express();
@@ -16,6 +18,50 @@ app.get('/health', (_req, res) => {
 
 app.post('/auth/register', register);
 app.post('/auth/login', login);
+
+// Criar um novo board (autenticado)
+app.post('/boards', authenticate, async (req, res, next) => {
+  try {
+    const body = createBoardSchema.parse(req.body);
+    const board = await prisma.board.create({
+      data: { title: body.title, ownerId: req.userId },
+      select: { id: true, title: true },
+    });
+    return res.status(201).json(board);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// Listar boards do utilizador autenticado
+app.get('/boards', authenticate, async (req, res, next) => {
+  try {
+    const boards = await prisma.board.findMany({
+      where: { ownerId: req.userId },
+      select: { id: true, title: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    return res.json(boards);
+  } catch (err) {
+    return next(err);
+  }
+});
+
+// Obter detalhes de um board (inclui título) — apenas owner pode ver
+app.get('/boards/:id', authenticate, async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const board = await prisma.board.findUnique({
+      where: { id },
+      select: { id: true, title: true, ownerId: true },
+    });
+    if (!board) return next(new AppError(404, 'Board não encontrado'));
+    if (board.ownerId !== req.userId) return next(new AppError(403, 'Acesso proibido'));
+    return res.json({ id: board.id, title: board.title });
+  } catch (err) {
+    return next(err);
+  }
+});
 
 // As rotas de boards, lists e cards são adicionadas pelos estagiários
 // à medida que cada user story for sendo implementada.

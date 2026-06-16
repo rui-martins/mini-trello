@@ -1,11 +1,15 @@
 name: Deploy
 
-# Constrói as imagens UMA vez (GHCR), faz deploy automático em DEV, e promove
-# para PROD só após o teu "Approve" (regra Required reviewers do Environment
-# "production"). A mesma imagem testada em DEV é a que vai para PROD.
+# Deploy POR BRANCH:
+#   push/merge em `dev`  -> build + deploy automático em DEV  (/opt/mini-trello-dev)
+#   push/merge em `main` -> build + deploy automático em PROD (/opt/mini-trello-prod)
+#
+# O "gate" de PROD é o Pull Request para `main`: a branch está protegida e
+# precisa da tua aprovação para fazer merge. Depois do merge, o deploy em PROD
+# é automático.
 on:
   push:
-    branches: [main]
+    branches: [dev, main]
   workflow_dispatch:
 
 concurrency:
@@ -58,51 +62,14 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  deploy-dev:
-    name: Deploy to DEV
+  deploy:
+    name: Deploy (${{ github.ref_name }})
     needs: build-push
     runs-on: ubuntu-latest
-    environment: development # sem regras: deploy automático
+    # main -> production / dev -> development (só para registo de deployments)
+    environment: ${{ github.ref_name == 'main' && 'production' || 'development' }}
     env:
-      DEPLOY_DIR: /opt/mini-trello-dev
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Connect to Tailscale
-        uses: tailscale/github-action@v2
-        with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:github
-
-      - name: Prepare SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-
-      - name: Sync compose file
-        run: |
-          scp -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new \
-            docker-compose.yml \
-            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:${{ env.DEPLOY_DIR }}/docker-compose.yml
-
-      - name: Pull & restart
-        run: |
-          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new \
-            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
-            "cd ${{ env.DEPLOY_DIR }} \
-             && IMAGE_TAG=${{ needs.build-push.outputs.tag }} docker compose pull \
-             && IMAGE_TAG=${{ needs.build-push.outputs.tag }} docker compose up -d \
-             && docker image prune -f"
-
-  deploy-prod:
-    name: Deploy to PROD
-    needs: [build-push, deploy-dev]
-    runs-on: ubuntu-latest
-    environment: production # Required reviewers: fica em pausa até carregares Approve
-    env:
-      DEPLOY_DIR: /opt/mini-trello-prod
+      DEPLOY_DIR: ${{ github.ref_name == 'main' && '/opt/mini-trello-prod' || '/opt/mini-trello-dev' }}
     steps:
       - uses: actions/checkout@v4
 

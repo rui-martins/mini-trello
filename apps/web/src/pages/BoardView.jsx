@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   DndContext,
@@ -14,10 +14,11 @@ import {
   rectSortingStrategy,
 } from '@dnd-kit/sortable';
 import ListColumn from '../components/ListColumn';
+import { getAuthHeaders } from '../lib/auth-store';
 
 export default function BoardView() {
   const { id } = useParams();
-
+  const [boardTitle, setBoardTitle] = useState(null);
   const [lists, setLists] = useState([
     {
       id: 'list-1',
@@ -40,6 +41,21 @@ export default function BoardView() {
   ]);
 
   const sensors = useSensors(useSensor(PointerSensor));
+
+  useEffect(() => {
+    async function loadBoard() {
+      if (!id) return;
+      try {
+        const res = await fetch(`/api/boards/${id}`, { headers: getAuthHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        setBoardTitle(data.title);
+      } catch (err) {
+        // ignore
+      }
+    }
+    loadBoard();
+  }, [id]);
 
   function findContainer(cardId) {
     return lists.find((l) => l.cards.find((c) => c.id === cardId))?.id || null;
@@ -106,7 +122,7 @@ export default function BoardView() {
     <div className="min-h-screen bg-slate-950 text-slate-50 px-4 py-8">
       <div className="mx-auto max-w-6xl">
         <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">Board: {id}</h1>
+          <h1 className="text-2xl font-semibold">Board: {boardTitle ?? id}</h1>
           <Link to="/dashboard" className="text-sm text-cyan-300 hover:underline">Voltar</Link>
         </div>
 

@@ -19,46 +19,118 @@ import { getAuthHeaders } from '../lib/auth-store';
 export default function BoardView() {
   const { id } = useParams();
   const [boardTitle, setBoardTitle] = useState(null);
-  const [lists, setLists] = useState([
-    {
-      id: 'list-1',
-      title: 'A Fazer',
-      cards: [
-        { id: 'c1', title: 'Configurar ambiente' },
-        { id: 'c2', title: 'Desenhar schema' },
-      ],
-    },
-    {
-      id: 'list-2',
-      title: 'Em Progresso',
-      cards: [{ id: 'c3', title: 'Implementar auth' }],
-    },
-    {
-      id: 'list-3',
-      title: 'Concluído',
-      cards: [{ id: 'c4', title: 'Escrever US-03' }],
-    },
-  ]);
+  const [lists, setLists] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [newListTitle, setNewListTitle] = useState('');
+  const [creatingList, setCreatingList] = useState(false);
 
   const sensors = useSensors(useSensor(PointerSensor));
 
+  // Carregar board, listas e cartões
   useEffect(() => {
-    async function loadBoard() {
+    async function loadBoardData() {
       if (!id) return;
       try {
-        const res = await fetch(`/api/boards/${id}`, { headers: getAuthHeaders() });
-        if (!res.ok) return;
-        const data = await res.json();
-        setBoardTitle(data.title);
+        setLoading(true);
+        // Carregar board
+        const boardRes = await fetch(`/api/boards/${id}`, { headers: getAuthHeaders() });
+        if (!boardRes.ok) {
+          setLoading(false);
+          return;
+        }
+        const boardData = await boardRes.json();
+        setBoardTitle(boardData.title);
+
+        // Carregar listas
+        const listsRes = await fetch(`/api/boards/${id}/lists`, { headers: getAuthHeaders() });
+        if (!listsRes.ok) {
+          setLoading(false);
+          return;
+        }
+        const listsData = await listsRes.json();
+
+        // Carregar cartões para cada lista
+        const listsWithCards = await Promise.all(
+          listsData.map(async (list) => {
+            const cardsRes = await fetch(`/api/boards/${id}/lists/${list.id}/cards`, {
+              headers: getAuthHeaders(),
+            });
+            const cards = cardsRes.ok ? await cardsRes.json() : [];
+            return { ...list, cards };
+          }),
+        );
+
+        setLists(listsWithCards);
       } catch (err) {
-        // ignore
+        console.error('Erro ao carregar dados:', err);
+      } finally {
+        setLoading(false);
       }
     }
-    loadBoard();
+    loadBoardData();
   }, [id]);
+
+  async function handleCreateList(e) {
+    e.preventDefault();
+    if (!newListTitle.trim()) return;
+
+    try {
+      setCreatingList(true);
+      const res = await fetch(`/api/boards/${id}/lists`, {
+        method: 'POST',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newListTitle }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Erro ao criar lista');
+      }
+
+      const newList = await res.json();
+      setLists([...lists, { ...newList, cards: [] }]);
+      setNewListTitle('');
+    } catch (err) {
+      console.error('Erro ao criar lista:', err);
+    } finally {
+      setCreatingList(false);
+    }
+  }
 
   function findContainer(cardId) {
     return lists.find((l) => l.cards.find((c) => c.id === cardId))?.id || null;
+  }
+
+  function getContainerFromOver(overId) {
+    // Se overId é um cartão, encontrar o container (lista)
+    const cardContainer = findContainer(overId);
+    if (cardContainer) return cardContainer;
+    
+    // Se overId é uma lista diretamente (lista vazia com useDroppable)
+    if (lists.find((l) => l.id === overId)) {
+      return overId;
+    }
+    
+    return null;
+  }
+
+  async function moveCardInDatabase(cardId, newListId, newPosition) {
+    try {
+      const res = await fetch(`/api/boards/${id}/cards/${cardId}/move`, {
+        method: 'POST',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newListId, newPosition }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Erro ao mover cartão');
+      }
+
+      return await res.json();
+    } catch (err) {
+      console.error('Erro ao mover cartão:', err);
+      // Se falhar, recarregar dados para sincronizar
+      throw err;
+    }
   }
 
   function onDragEnd(event) {
@@ -76,9 +148,9 @@ export default function BoardView() {
       return;
     }
 
-    // Dragging a card: active.id and over.id are card ids or a list id
+    // Dragging a card: active.id is a card id, over.id is either a card or list id
     const activeContainer = findContainer(active.id);
-    const overContainer = findContainer(over.id) || over.id;
+    const overContainer = getContainerFromOver(over.id);
     if (!activeContainer || !overContainer) return;
 
     if (activeContainer === overContainer) {
@@ -87,8 +159,29 @@ export default function BoardView() {
         prev.map((l) => {
           if (l.id !== activeContainer) return l;
           const oldIndex = l.cards.findIndex((c) => c.id === active.id);
-          const newIndex = l.cards.findIndex((c) => c.id === over.id);
-          return { ...l, cards: arrayMove(l.cards, oldIndex, newIndex) };
+          
+          // Se over.id é um cartão, fazer reorder
+          const overCardIndex = l.cards.findIndex((c) => c.id === over.id);
+          if (overCardIndex !== -1) {
+            const newCards = arrayMove(l.cards, oldIndex, overCardIndex);
+            // Atualizar DB com nova posição
+            moveCardInDatabase(active.id, l.id, overCardIndex).catch(() => {
+              console.error('Falha ao sincronizar com DB');
+            });
+            return { ...l, cards: newCards };
+          }
+          
+          // Se over.id é a própria lista (vazia), mover para o final
+          if (over.id === l.id) {
+            const [moved] = l.cards.splice(oldIndex, 1);
+            const newCards = [...l.cards, moved];
+            moveCardInDatabase(active.id, l.id, newCards.length - 1).catch(() => {
+              console.error('Falha ao sincronizar com DB');
+            });
+            return { ...l, cards: newCards };
+          }
+          
+          return l;
         }),
       );
       return;
@@ -106,16 +199,36 @@ export default function BoardView() {
       const cardIndex = sourceList.cards.findIndex((c) => c.id === active.id);
       const [moved] = sourceList.cards.splice(cardIndex, 1);
 
-      // if over is a card id, insert before it; if over is list id, push to end
+      // Se over.id é um cartão na lista destino, inserir antes dele
+      let newPosition;
       const overCardIndex = destList.cards.findIndex((c) => c.id === over.id);
-      if (overCardIndex === -1) destList.cards.push(moved);
-      else destList.cards.splice(overCardIndex, 0, moved);
+      if (overCardIndex !== -1) {
+        destList.cards.splice(overCardIndex, 0, moved);
+        newPosition = overCardIndex;
+      } else {
+        // Senão, push to end
+        destList.cards.push(moved);
+        newPosition = destList.cards.length - 1;
+      }
+
+      // Atualizar DB com o cartão movido para a nova lista
+      moveCardInDatabase(active.id, overContainer, newPosition).catch(() => {
+        console.error('Falha ao sincronizar com DB');
+      });
 
       const newLists = [...prev];
       newLists[sourceListIndex] = sourceList;
       newLists[destListIndex] = destList;
       return newLists;
     });
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-50 px-4 py-8 flex items-center justify-center">
+        <div className="text-slate-400">A carregar...</div>
+      </div>
+    );
   }
 
   return (
@@ -128,12 +241,34 @@ export default function BoardView() {
 
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={lists.map((l) => l.id)} strategy={rectSortingStrategy}>
-            <div className="flex gap-4">
+            <div className="flex gap-4 overflow-x-auto pb-4">
               {lists.map((list) => (
                 <div className="min-w-[280px]" key={list.id}>
-                  <ListColumn list={list} />
+                  <ListColumn list={list} boardId={id} onCardAdded={(card) => {
+                    setLists(prev => prev.map(l => l.id === list.id ? { ...l, cards: [...l.cards, card] } : l));
+                  }} />
                 </div>
               ))}
+
+              {/* Nova lista */}
+              <div className="min-w-[280px]">
+                <form onSubmit={handleCreateList} className="rounded-2xl border border-slate-700 bg-slate-900/50 p-4">
+                  <input
+                    type="text"
+                    placeholder="Nova lista..."
+                    value={newListTitle}
+                    onChange={(e) => setNewListTitle(e.target.value)}
+                    className="w-full bg-slate-800 text-sm text-white placeholder-slate-500 rounded px-2 py-2 border border-slate-700 focus:outline-none focus:border-cyan-500"
+                  />
+                  <button
+                    type="submit"
+                    disabled={creatingList || !newListTitle.trim()}
+                    className="mt-3 w-full bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded transition"
+                  >
+                    {creatingList ? 'A criar...' : 'Criar Lista'}
+                  </button>
+                </form>
+              </div>
             </div>
           </SortableContext>
         </DndContext>

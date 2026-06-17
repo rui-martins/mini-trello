@@ -1,6 +1,6 @@
 # Mini-Trello
 
-Projeto integrador do estágio full-stack (Semanas 6-8). A spec completa está em `spec_mini_trello.docx`.
+Projeto integrador do estágio full-stack (Semanas 6-8). A spec completa está em `spec_mini_trello.pdf`.
 
 ## Pré-requisitos
 

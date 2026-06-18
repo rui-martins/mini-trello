@@ -59,6 +59,9 @@ export async function register(req, res, next) {
     if (err.name === 'ZodError') {
       return next(new AppError(400, err.errors[0].message));
     }
+    // Registar erro original para debugging
+    // eslint-disable-next-line no-console
+    console.error(err);
     return next(new AppError(500, 'Erro ao registar.'));
   }
 }

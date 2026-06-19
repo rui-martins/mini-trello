@@ -353,8 +353,8 @@ app.use((err, _req, res, _next) => {
 });
 
 // Rotas implementadas para listas e cartões
-const server = app.listen(PORT, '127.0.0.1', () => {
-  console.log(`mini-trello-api a escutar em http://localhost:${PORT}`);
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`mini-trello-api a escutar em http://0.0.0.0:${PORT}`);
 });
 
 // Permitir reutilizar a porta imediatamente após encerramento

@@ -9,9 +9,10 @@ export function AuthForm({ mode }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [passwordConfirm, setPasswordConfirm] = useState('');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState({ email: null, name: null, password: null });
+  const [fieldErrors, setFieldErrors] = useState({ email: null, name: null, password: null, passwordConfirm: null });
 
   // Determina se é modo registo ou login
   const isRegister = mode === 'register';
@@ -32,6 +33,11 @@ export function AuthForm({ mode }) {
       }
       if (password.length < 6) {
         setFieldErrors((prev) => ({ ...prev, password: 'A password tem de ter pelo menos 6 caracteres.' }));
+        setLoading(false);
+        return;
+      }
+      if (password !== passwordConfirm) {
+        setFieldErrors((prev) => ({ ...prev, passwordConfirm: 'As passwords não coincidem.' }));
         setLoading(false);
         return;
       }
@@ -133,6 +139,24 @@ export function AuthForm({ mode }) {
                 className="w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-400"
               />
             </Field>
+
+            {isRegister && (
+              <Field icon={<Lock className="h-4 w-4" />} label="Confirmar password" error={fieldErrors.passwordConfirm}>
+                <input
+                  type="password"
+                  value={passwordConfirm}
+                  onChange={(event) => {
+                    setPasswordConfirm(event.target.value);
+                    setFieldErrors((prev) => ({ ...prev, passwordConfirm: null }));
+                  }}
+                  required
+                  minLength={6}
+                  maxLength={120}
+                  placeholder="••••••••"
+                  className="w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-400"
+                />
+              </Field>
+            )}
 
             {error && <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">{error}</div>}
 

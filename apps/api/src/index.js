@@ -1,4 +1,11 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+// Carregar .env do workspace root (quando o processo é iniciado em apps/api)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 import express from 'express';
 import cors from 'cors';
 import { register, login, authenticate } from './auth.js';
@@ -336,6 +343,11 @@ app.post('/boards/:boardId/cards/:cardId/move', authenticate, async (req, res, n
 
 // Error handler: centraliza respostas de erro em JSON usando `AppError`
 app.use((err, _req, res, _next) => {
+  // Erros de parse de JSON (body-parser) — devolvemos 400
+  if (err && (err.type === 'entity.parse.failed' || err.status === 400 || err.statusCode === 400)) {
+    return res.status(400).json({ error: 'JSON inválido' });
+  }
+
   // Zod validation errors (thrown by schema.parse)
   if (err && err.name === 'ZodError') {
     return res.status(400).json({ error: err.errors[0].message });

@@ -151,9 +151,6 @@ export function Dashboard() {
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {boards.length === 0 ? (
               <>
-                <Link to="/boards/b1" className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 text-slate-100 hover:bg-slate-800">Projeto Pessoal (privado)</Link>
-                <Link to="/boards/b2" className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 text-slate-100 hover:bg-slate-800">Trabalho (privado)</Link>
-                <Link to="/boards/b3" className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 text-slate-100 hover:bg-slate-800">Open Source (público)</Link>
               </>
             ) : (
               boards.map((b) => (

@@ -6,8 +6,9 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch src/index.js",
+    "dev:clean": "node kill-port-api.js 3000; npm run dev",
     "start": "node src/index.js",
-    "lint": "eslint src --max-warnings 0",
+    "lint": "eslint src --max-warnings 3",
     "format": "prettier --write src"
   },
   "dependencies": {

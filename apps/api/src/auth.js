@@ -59,6 +59,9 @@ export async function register(req, res, next) {
     if (err.name === 'ZodError') {
       return next(new AppError(400, err.errors[0].message));
     }
+    // Registar erro original para debugging
+    // eslint-disable-next-line no-console
+    console.error(err);
     return next(new AppError(500, 'Erro ao registar.'));
   }
 }
@@ -97,5 +100,29 @@ export async function login(req, res, next) {
       return next(new AppError(400, err.errors[0].message));
     }
     return next(new AppError(500, 'Erro ao fazer login.'));
+  }
+}
+
+// Middleware simples para autenticar requests usando o token JWT
+export function authenticate(req, _res, next) {
+  try {
+    const auth = req.headers?.authorization || '';
+    if (!auth || !auth.startsWith('Bearer ')) {
+      const err = new Error('Não autorizado');
+      err.name = 'AppError';
+      err.status = 401;
+      throw err;
+    }
+
+    const token = auth.slice('Bearer '.length);
+    const payload = jwt.verify(token, JWT_SECRET);
+    // payload deve conter userId conforme gerado no register/login
+    req.userId = payload.userId;
+    return next();
+  } catch (err) {
+    const e = new Error('Token inválido ou expirado');
+    e.name = 'AppError';
+    e.status = 401;
+    return next(e);
   }
 }

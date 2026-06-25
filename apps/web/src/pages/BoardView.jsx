@@ -274,7 +274,7 @@ export default function BoardView() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 px-4 py-8">
+    <div className="min-h-screen bg-slate-950 text-slate-50 px-4 py-8 overflow-x-auto">
       <div className="mx-auto max-w-6xl">
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-2xl font-semibold">Board: {boardTitle ?? id}</h1>
@@ -283,7 +283,7 @@ export default function BoardView() {
 
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
           <SortableContext items={lists.map((l) => l.id)} strategy={rectSortingStrategy}>
-            <div className="flex gap-4 overflow-x-auto pb-4">
+            <div className="flex gap-4 pb-4 min-w-max">
               {lists.map((list) => (
                 <SortableList
                   key={list.id}

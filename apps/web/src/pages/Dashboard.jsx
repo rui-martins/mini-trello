@@ -1,4 +1,4 @@
-import { LayoutDashboard, LogOut, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, LogOut } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import Toast from '../components/Toast';
@@ -98,21 +98,6 @@ export function Dashboard() {
       </header>
 
       <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 sm:px-6 lg:px-8">
-        <section className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6 shadow-2xl shadow-black/30">
-          <div className="flex items-start gap-4">
-            <div className="rounded-2xl bg-emerald-400/10 p-3 text-emerald-300">
-              <ShieldCheck className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-sm uppercase tracking-[0.18em] text-slate-400">Estado</p>
-              <h2 className="mt-1 text-2xl font-semibold text-white">Frontend de auth pronto</h2>
-              <p className="mt-2 max-w-2xl text-slate-300">
-                Esta versão já inclui login, registo e um dashboard simples em frontend, sem base de dados, para poderes continuar a desenvolver a app.
-              </p>
-            </div>
-          </div>
-        </section>
-
         <section>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-xl font-semibold text-white">Os teus Boards</h3>
@@ -158,25 +143,6 @@ export function Dashboard() {
               ))
             )}
           </div>
-        </section>
-
-        <section className="grid gap-6 md:grid-cols-2">
-          <article className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6 shadow-2xl shadow-black/30">
-            <h3 className="text-xl font-semibold text-white">O que está a funcionar</h3>
-            <ul className="mt-4 space-y-3 text-sm text-slate-300">
-              <li>• Routes /login, /register e /dashboard</li>
-              <li>• Registo simples em localStorage</li>
-              <li>• Login com validação local</li>
-              <li>• Navegação protegida com estado de sessão</li>
-            </ul>
-          </article>
-
-          <article className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6 shadow-2xl shadow-black/30">
-            <h3 className="text-xl font-semibold text-white">Próximo passo</h3>
-            <p className="mt-4 text-sm text-slate-300">
-              Quando a API estiver pronta, podemos trocar esta store local por chamadas fetch reais para /auth/login e /auth/register.
-            </p>
-          </article>
         </section>
       </main>
     </div>

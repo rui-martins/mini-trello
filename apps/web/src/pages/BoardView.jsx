@@ -10,11 +10,26 @@ import {
 import {
   arrayMove,
   SortableContext,
-  sortableKeyboardCoordinates,
+  useSortable,
   rectSortingStrategy,
 } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import ListColumn from '../components/ListColumn';
 import { getAuthHeaders } from '../lib/auth-store';
+
+function SortableList({ list, boardId, onCardAdded }) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: list.id });
+  const style = {
+    transform: CSS.Translate.toString(transform),
+    transition,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="min-w-[280px]">
+      <ListColumn list={list} boardId={boardId} onCardAdded={onCardAdded} dragHandleProps={{ ...attributes, ...listeners }} />
+    </div>
+  );
+}
 
 export default function BoardView() {
   const { id } = useParams();
@@ -133,6 +148,25 @@ export default function BoardView() {
     }
   }
 
+  async function moveListInDatabase(listId, newPosition) {
+    try {
+      const res = await fetch(`/api/boards/${id}/lists/${listId}`, {
+        method: 'PATCH',
+        headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ position: newPosition }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Erro ao mover lista');
+      }
+
+      return await res.json();
+    } catch (err) {
+      console.error('Erro ao mover lista:', err);
+      throw err;
+    }
+  }
+
   function onDragEnd(event) {
     const { active, over } = event;
     if (!over) return;
@@ -143,7 +177,15 @@ export default function BoardView() {
       const oldIndex = lists.findIndex((l) => l.id === active.id);
       const newIndex = lists.findIndex((l) => l.id === over.id);
       if (oldIndex !== newIndex) {
-        setLists((prev) => arrayMove(prev, oldIndex, newIndex));
+        const newLists = arrayMove(lists, oldIndex, newIndex);
+        setLists(newLists);
+        Promise.all(
+          newLists.map((list, index) => {
+            return moveListInDatabase(list.id, index).catch(() => {
+              console.error('Falha ao sincronizar posição da lista', list.id);
+            });
+          }),
+        );
       }
       return;
     }
@@ -243,11 +285,14 @@ export default function BoardView() {
           <SortableContext items={lists.map((l) => l.id)} strategy={rectSortingStrategy}>
             <div className="flex gap-4 overflow-x-auto pb-4">
               {lists.map((list) => (
-                <div className="min-w-[280px]" key={list.id}>
-                  <ListColumn list={list} boardId={id} onCardAdded={(card) => {
-                    setLists(prev => prev.map(l => l.id === list.id ? { ...l, cards: [...l.cards, card] } : l));
-                  }} />
-                </div>
+                <SortableList
+                  key={list.id}
+                  list={list}
+                  boardId={id}
+                  onCardAdded={(card) => {
+                    setLists((prev) => prev.map((l) => (l.id === list.id ? { ...l, cards: [...l.cards, card] } : l)));
+                  }}
+                />
               ))}
 
               {/* Nova lista */}

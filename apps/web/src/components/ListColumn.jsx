@@ -5,7 +5,7 @@ import { useDroppable } from '@dnd-kit/core';
 import CardItem from './CardItem';
 import { getAuthHeaders } from '../lib/auth-store';
 
-export default function ListColumn({ list, boardId, onCardAdded }) {
+export default function ListColumn({ list, boardId, onCardAdded, dragHandleProps }) {
   const [newCardTitle, setNewCardTitle] = useState('');
   const [creatingCard, setCreatingCard] = useState(false);
   const [isAddingCard, setIsAddingCard] = useState(false);
@@ -48,7 +48,7 @@ export default function ListColumn({ list, boardId, onCardAdded }) {
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between" {...dragHandleProps}>
         <h4 className="text-sm font-semibold text-white">{list.title}</h4>
         <div className="text-xs text-slate-400">{list.cards.length}</div>
       </div>

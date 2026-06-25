@@ -147,7 +147,7 @@ app.patch('/boards/:boardId/lists/:listId', authenticate, async (req, res, next)
     if (board.ownerId !== req.userId) return next(new AppError(403, 'Acesso proibido'));
 
     const list = await prisma.list.update({
-      where: { id: listId, boardId },
+      where: { id: listId },
       data: body,
       select: { id: true, title: true, position: true },
     });
@@ -172,7 +172,7 @@ app.delete('/boards/:boardId/lists/:listId', authenticate, async (req, res, next
     if (board.ownerId !== req.userId) return next(new AppError(403, 'Acesso proibido'));
 
     await prisma.list.delete({
-      where: { id: listId, boardId },
+      where: { id: listId },
     });
     return res.status(204).send();
   } catch (err) {
@@ -262,7 +262,7 @@ app.patch('/boards/:boardId/lists/:listId/cards/:cardId', authenticate, async (r
     if (board.ownerId !== req.userId) return next(new AppError(403, 'Acesso proibido'));
 
     const card = await prisma.card.update({
-      where: { id: cardId, listId },
+      where: { id: cardId },
       data: body,
       select: { id: true, title: true, description: true, position: true },
     });
@@ -287,7 +287,7 @@ app.delete('/boards/:boardId/lists/:listId/cards/:cardId', authenticate, async (
     if (board.ownerId !== req.userId) return next(new AppError(403, 'Acesso proibido'));
 
     await prisma.card.delete({
-      where: { id: cardId, listId },
+      where: { id: cardId },
     });
     return res.status(204).send();
   } catch (err) {

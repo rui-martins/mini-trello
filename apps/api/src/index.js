@@ -12,6 +12,7 @@ import { register, login, authenticate } from './auth.js';
 import prisma from './db.js';
 import { createBoardSchema, createListSchema, updateListSchema, createCardSchema, updateCardSchema, moveCardSchema } from './schemas.js';
 import AppError from './errors.js';
+import { buildCardPositionUpdates } from './card-ordering.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -324,13 +325,40 @@ app.post('/boards/:boardId/cards/:cardId/move', authenticate, async (req, res, n
     });
     if (!newList) return next(new AppError(404, 'Lista de destino não encontrada'));
 
-    // Atualizar o cartão com a nova lista e posição
-    const updatedCard = await prisma.card.update({
+    const sourceCards = await prisma.card.findMany({
+      where: { listId: card.listId },
+      select: { id: true, listId: true, position: true },
+      orderBy: { position: 'asc' },
+    });
+
+    const targetCards = await prisma.card.findMany({
+      where: { listId: newListId },
+      select: { id: true, listId: true, position: true },
+      orderBy: { position: 'asc' },
+    });
+
+    const updates = buildCardPositionUpdates({
+      sourceCards,
+      targetCards,
+      movedCardId: cardId,
+      targetListId: newListId,
+      newPosition,
+    });
+
+    await prisma.$transaction(
+      updates.map((update) =>
+        prisma.card.update({
+          where: { id: update.id },
+          data: {
+            listId: update.listId,
+            position: update.position,
+          },
+        }),
+      ),
+    );
+
+    const updatedCard = await prisma.card.findUnique({
       where: { id: cardId },
-      data: {
-        listId: newListId,
-        position: newPosition,
-      },
       select: { id: true, title: true, description: true, position: true, listId: true },
     });
 

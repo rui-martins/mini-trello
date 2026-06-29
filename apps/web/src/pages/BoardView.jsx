@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { LayoutDashboard, LogOut } from 'lucide-react';
 import {
   DndContext,
-  closestCenter,
+  closestCorners,
   PointerSensor,
   useSensor,
   useSensors,
@@ -15,7 +16,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import ListColumn from '../components/ListColumn';
-import { getAuthHeaders } from '../lib/auth-store';
+import { getAuthHeaders, getCurrentUser, logout } from '../lib/auth-store';
 
 function SortableList({ list, boardId, onCardAdded }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: list.id });
@@ -33,6 +34,8 @@ function SortableList({ list, boardId, onCardAdded }) {
 
 export default function BoardView() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const user = getCurrentUser();
   const [boardTitle, setBoardTitle] = useState(null);
   const [lists, setLists] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -115,16 +118,20 @@ export default function BoardView() {
     return lists.find((l) => l.cards.find((c) => c.id === cardId))?.id || null;
   }
 
-  function getContainerFromOver(overId) {
+  function getContainerFromOver(overId, overData) {
+    if (overData?.type === 'list-end' || overData?.type === 'list') {
+      return overData?.listId || overId;
+    }
+
     // Se overId é um cartão, encontrar o container (lista)
     const cardContainer = findContainer(overId);
     if (cardContainer) return cardContainer;
-    
+
     // Se overId é uma lista diretamente (lista vazia com useDroppable)
     if (lists.find((l) => l.id === overId)) {
       return overId;
     }
-    
+
     return null;
   }
 
@@ -171,6 +178,11 @@ export default function BoardView() {
     const { active, over } = event;
     if (!over) return;
 
+    const overData = over.data?.current;
+    const overIndex = overData?.sortable?.index;
+    const overType = overData?.type;
+    const targetIndex = typeof overData?.index === 'number' ? overData.index : overIndex;
+
     // If dragging a list (top-level), reorder lists
     const isListDrag = lists.findIndex((l) => l.id === active.id) > -1;
     if (isListDrag) {
@@ -192,44 +204,48 @@ export default function BoardView() {
 
     // Dragging a card: active.id is a card id, over.id is either a card or list id
     const activeContainer = findContainer(active.id);
-    const overContainer = getContainerFromOver(over.id);
+    const overContainer = getContainerFromOver(over.id, overData);
     if (!activeContainer || !overContainer) return;
 
     if (activeContainer === overContainer) {
-      // reorder within same list
       setLists((prev) =>
         prev.map((l) => {
           if (l.id !== activeContainer) return l;
+
           const oldIndex = l.cards.findIndex((c) => c.id === active.id);
-          
-          // Se over.id é um cartão, fazer reorder
-          const overCardIndex = l.cards.findIndex((c) => c.id === over.id);
-          if (overCardIndex !== -1) {
-            const newCards = arrayMove(l.cards, oldIndex, overCardIndex);
-            // Atualizar DB com nova posição
-            moveCardInDatabase(active.id, l.id, overCardIndex).catch(() => {
+          const resolvedTargetIndex = typeof targetIndex === 'number' ? targetIndex : null;
+
+          if (over.id === active.id) {
+            return l;
+          }
+
+          if (typeof resolvedTargetIndex === 'number' && resolvedTargetIndex >= 0 && over.id !== active.id) {
+            const nextCards = [...l.cards];
+            const [moved] = nextCards.splice(oldIndex, 1);
+            const insertIndex = resolvedTargetIndex > oldIndex ? resolvedTargetIndex : resolvedTargetIndex;
+            nextCards.splice(insertIndex, 0, moved);
+            moveCardInDatabase(active.id, l.id, insertIndex).catch(() => {
               console.error('Falha ao sincronizar com DB');
             });
-            return { ...l, cards: newCards };
+            return { ...l, cards: nextCards };
           }
-          
-          // Se over.id é a própria lista (vazia), mover para o final
-          if (over.id === l.id) {
-            const [moved] = l.cards.splice(oldIndex, 1);
-            const newCards = [...l.cards, moved];
-            moveCardInDatabase(active.id, l.id, newCards.length - 1).catch(() => {
+
+          if (overType === 'list' || over.id === l.id || overType === 'list-end') {
+            const nextCards = [...l.cards];
+            const [moved] = nextCards.splice(oldIndex, 1);
+            nextCards.push(moved);
+            moveCardInDatabase(active.id, l.id, nextCards.length - 1).catch(() => {
               console.error('Falha ao sincronizar com DB');
             });
-            return { ...l, cards: newCards };
+            return { ...l, cards: nextCards };
           }
-          
+
           return l;
         }),
       );
       return;
     }
 
-    // move card between lists
     setLists((prev) => {
       const sourceListIndex = prev.findIndex((l) => l.id === activeContainer);
       const destListIndex = prev.findIndex((l) => l.id === overContainer);
@@ -241,19 +257,15 @@ export default function BoardView() {
       const cardIndex = sourceList.cards.findIndex((c) => c.id === active.id);
       const [moved] = sourceList.cards.splice(cardIndex, 1);
 
-      // Se over.id é um cartão na lista destino, inserir antes dele
-      let newPosition;
-      const overCardIndex = destList.cards.findIndex((c) => c.id === over.id);
-      if (overCardIndex !== -1) {
-        destList.cards.splice(overCardIndex, 0, moved);
-        newPosition = overCardIndex;
-      } else {
-        // Senão, push to end
-        destList.cards.push(moved);
-        newPosition = destList.cards.length - 1;
+      let newPosition = destList.cards.length;
+      if (typeof targetIndex === 'number' && targetIndex >= 0) {
+        newPosition = targetIndex;
+      } else if (overType === 'list' || overType === 'list-end' || over.id === overContainer) {
+        newPosition = destList.cards.length;
       }
 
-      // Atualizar DB com o cartão movido para a nova lista
+      destList.cards.splice(newPosition, 0, moved);
+
       moveCardInDatabase(active.id, overContainer, newPosition).catch(() => {
         console.error('Falha ao sincronizar com DB');
       });
@@ -265,59 +277,121 @@ export default function BoardView() {
     });
   }
 
+  function handleLogout() {
+    logout();
+    navigate('/login', { replace: true });
+  }
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-50 px-4 py-8 flex items-center justify-center">
-        <div className="text-slate-400">A carregar...</div>
+      <div className="min-h-screen bg-slate-950 text-slate-50">
+        <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur">
+          <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-400 text-slate-950">
+                <LayoutDashboard className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm text-slate-400">Board</p>
+                <h1 className="text-xl font-semibold">{boardTitle ?? 'A carregar...'}</h1>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <Link to="/dashboard" className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100 transition hover:bg-slate-700">
+                Dashboard
+              </Link>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-medium text-slate-100 transition hover:bg-slate-700 cursor-pointer"
+              >
+                <LogOut className="h-4 w-4" />
+                Sair
+              </button>
+            </div>
+          </div>
+        </header>
+        <div className="flex min-h-[calc(100vh-73px)] items-center justify-center px-4 py-8">
+          <div className="text-slate-400">A carregar...</div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 px-4 py-8 overflow-x-auto">
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">Board: {boardTitle ?? id}</h1>
-          <Link to="/dashboard" className="text-sm text-cyan-300 hover:underline">Voltar</Link>
-        </div>
-
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-          <SortableContext items={lists.map((l) => l.id)} strategy={rectSortingStrategy}>
-            <div className="flex gap-4 pb-4 min-w-max">
-              {lists.map((list) => (
-                <SortableList
-                  key={list.id}
-                  list={list}
-                  boardId={id}
-                  onCardAdded={(card) => {
-                    setLists((prev) => prev.map((l) => (l.id === list.id ? { ...l, cards: [...l.cards, card] } : l)));
-                  }}
-                />
-              ))}
-
-              {/* Nova lista */}
-              <div className="min-w-[280px]">
-                <form onSubmit={handleCreateList} className="rounded-2xl border border-slate-700 bg-slate-900/50 p-4">
-                  <input
-                    type="text"
-                    placeholder="Nova lista..."
-                    value={newListTitle}
-                    onChange={(e) => setNewListTitle(e.target.value)}
-                    className="w-full bg-slate-800 text-sm text-white placeholder-slate-500 rounded px-2 py-2 border border-slate-700 focus:outline-none focus:border-cyan-500"
-                  />
-                  <button
-                    type="submit"
-                    disabled={creatingList || !newListTitle.trim()}
-                    className="mt-3 w-full bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded transition"
-                  >
-                    {creatingList ? 'A criar...' : 'Criar Lista'}
-                  </button>
-                </form>
-              </div>
+    <div className="min-h-screen bg-slate-950 text-slate-50 overflow-x-auto">
+      <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-400 text-slate-950">
+              <LayoutDashboard className="h-5 w-5" />
             </div>
-          </SortableContext>
-        </DndContext>
-      </div>
+            <div>
+              <p className="text-sm text-slate-400">Board</p>
+              <h1 className="text-xl font-semibold">{boardTitle ?? id}</h1>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <Link to="/dashboard" className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100 transition hover:bg-slate-700">
+              Dashboard
+            </Link>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-medium text-slate-100 transition hover:bg-slate-700 cursor-pointer"
+            >
+              <LogOut className="h-4 w-4" />
+              Sair
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="px-4 py-8">
+        <div className="mx-auto max-w-6xl">
+          <div className="mb-6 flex items-center justify-between">
+            <h2 className="text-2xl font-semibold">Board: {boardTitle ?? id}</h2>
+            <Link to="/dashboard" className="text-sm text-cyan-300 hover:underline">Voltar</Link>
+          </div>
+
+          <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={onDragEnd}>
+            <SortableContext items={lists.map((l) => l.id)} strategy={rectSortingStrategy}>
+              <div className="flex gap-4 pb-4 min-w-max">
+                {lists.map((list) => (
+                  <SortableList
+                    key={list.id}
+                    list={list}
+                    boardId={id}
+                    onCardAdded={(card) => {
+                      setLists((prev) => prev.map((l) => (l.id === list.id ? { ...l, cards: [...l.cards, card] } : l)));
+                    }}
+                  />
+                ))}
+
+                {/* Nova lista */}
+                <div className="min-w-[280px]">
+                  <form onSubmit={handleCreateList} className="rounded-2xl border border-slate-700 bg-slate-900/50 p-4">
+                    <input
+                      type="text"
+                      placeholder="Nova lista..."
+                      value={newListTitle}
+                      onChange={(e) => setNewListTitle(e.target.value)}
+                      className="w-full bg-slate-800 text-sm text-white placeholder-slate-500 rounded px-2 py-2 border border-slate-700 focus:outline-none focus:border-cyan-500"
+                    />
+                    <button
+                      type="submit"
+                      disabled={creatingList || !newListTitle.trim()}
+                      className="mt-3 w-full bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded transition"
+                    >
+                      {creatingList ? 'A criar...' : 'Criar Lista'}
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </SortableContext>
+          </DndContext>
+        </div>
+      </main>
     </div>
   );
 }

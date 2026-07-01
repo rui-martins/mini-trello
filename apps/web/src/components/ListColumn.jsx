@@ -1,18 +1,64 @@
 import { useState } from 'react';
 import { SortableContext } from '@dnd-kit/sortable';
 import { rectSortingStrategy } from '@dnd-kit/sortable';
-import { useDroppable } from '@dnd-kit/core';
+import { useDroppable, useDndMonitor } from '@dnd-kit/core';
 import CardItem from './CardItem';
 import { getAuthHeaders } from '../lib/auth-store';
 
-export default function ListColumn({ list, boardId, onCardAdded }) {
+export default function ListColumn({ list, boardId, onCardAdded, dragHandleProps }) {
   const [newCardTitle, setNewCardTitle] = useState('');
   const [creatingCard, setCreatingCard] = useState(false);
   const [isAddingCard, setIsAddingCard] = useState(false);
+  const [activeDropIndex, setActiveDropIndex] = useState(null);
   
   // Zona de drop para listas vazias
   const { setNodeRef } = useDroppable({
     id: list.id,
+    data: {
+      type: 'list',
+      listId: list.id,
+    },
+  });
+
+  const endDropId = `${list.id}-end`;
+  const { setNodeRef: setEndDropRef } = useDroppable({
+    id: endDropId,
+    data: {
+      type: 'list-end',
+      listId: list.id,
+      index: list.cards.length,
+    },
+  });
+
+  useDndMonitor({
+    onDragOver(event) {
+      const { over } = event;
+      if (!over) {
+        setActiveDropIndex(null);
+        return;
+      }
+
+      const overData = over.data?.current;
+      if (overData?.type === 'card') {
+        setActiveDropIndex(overData.index);
+        return;
+      }
+
+      if (overData?.type === 'list-end') {
+        setActiveDropIndex(list.cards.length);
+        return;
+      }
+
+      if (overData?.type === 'list' && list.cards.length === 0) {
+        setActiveDropIndex(0);
+        return;
+      }
+
+      setActiveDropIndex(null);
+    },
+    onDragEnd() {
+      setActiveDropIndex(null);
+    },
   });
 
   // Criar um placeholder ID quando a lista está vazia para permitir drop
@@ -48,16 +94,26 @@ export default function ListColumn({ list, boardId, onCardAdded }) {
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between" {...dragHandleProps}>
         <h4 className="text-sm font-semibold text-white">{list.title}</h4>
         <div className="text-xs text-slate-400">{list.cards.length}</div>
       </div>
 
       <SortableContext items={sortableItems} strategy={rectSortingStrategy}>
         <div ref={setNodeRef} className="mt-3 min-h-[60px] flex flex-col gap-3">
-          {list.cards.map((card) => (
-            <CardItem key={card.id} card={card} />
+          {list.cards.map((card, index) => (
+            <div key={card.id}>
+              {activeDropIndex === index && (
+                <div className="mb-2 rounded-xl border border-dashed border-slate-600 bg-slate-800/40 p-3" />
+              )}
+              <CardItem card={card} listId={list.id} index={index} />
+            </div>
           ))}
+
+          {activeDropIndex === list.cards.length && (
+            <div className="rounded-xl border border-dashed border-slate-600 bg-slate-800/40 p-3" />
+          )}
+          <div ref={setEndDropRef} className="mt-1 h-10 rounded border border-dashed border-transparent transition hover:border-cyan-500/50" />
         </div>
       </SortableContext>
 

@@ -12,6 +12,7 @@ import { register, login, authenticate } from './auth.js';
 import prisma from './db.js';
 import { createBoardSchema, createListSchema, updateListSchema, createCardSchema, updateCardSchema, moveCardSchema } from './schemas.js';
 import AppError from './errors.js';
+import { buildCardPositionUpdates } from './card-ordering.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -147,7 +148,7 @@ app.patch('/boards/:boardId/lists/:listId', authenticate, async (req, res, next)
     if (board.ownerId !== req.userId) return next(new AppError(403, 'Acesso proibido'));
 
     const list = await prisma.list.update({
-      where: { id: listId, boardId },
+      where: { id: listId },
       data: body,
       select: { id: true, title: true, position: true },
     });
@@ -172,7 +173,7 @@ app.delete('/boards/:boardId/lists/:listId', authenticate, async (req, res, next
     if (board.ownerId !== req.userId) return next(new AppError(403, 'Acesso proibido'));
 
     await prisma.list.delete({
-      where: { id: listId, boardId },
+      where: { id: listId },
     });
     return res.status(204).send();
   } catch (err) {
@@ -262,7 +263,7 @@ app.patch('/boards/:boardId/lists/:listId/cards/:cardId', authenticate, async (r
     if (board.ownerId !== req.userId) return next(new AppError(403, 'Acesso proibido'));
 
     const card = await prisma.card.update({
-      where: { id: cardId, listId },
+      where: { id: cardId },
       data: body,
       select: { id: true, title: true, description: true, position: true },
     });
@@ -287,7 +288,7 @@ app.delete('/boards/:boardId/lists/:listId/cards/:cardId', authenticate, async (
     if (board.ownerId !== req.userId) return next(new AppError(403, 'Acesso proibido'));
 
     await prisma.card.delete({
-      where: { id: cardId, listId },
+      where: { id: cardId },
     });
     return res.status(204).send();
   } catch (err) {
@@ -324,13 +325,40 @@ app.post('/boards/:boardId/cards/:cardId/move', authenticate, async (req, res, n
     });
     if (!newList) return next(new AppError(404, 'Lista de destino não encontrada'));
 
-    // Atualizar o cartão com a nova lista e posição
-    const updatedCard = await prisma.card.update({
+    const sourceCards = await prisma.card.findMany({
+      where: { listId: card.listId },
+      select: { id: true, listId: true, position: true },
+      orderBy: { position: 'asc' },
+    });
+
+    const targetCards = await prisma.card.findMany({
+      where: { listId: newListId },
+      select: { id: true, listId: true, position: true },
+      orderBy: { position: 'asc' },
+    });
+
+    const updates = buildCardPositionUpdates({
+      sourceCards,
+      targetCards,
+      movedCardId: cardId,
+      targetListId: newListId,
+      newPosition,
+    });
+
+    await prisma.$transaction(
+      updates.map((update) =>
+        prisma.card.update({
+          where: { id: update.id },
+          data: {
+            listId: update.listId,
+            position: update.position,
+          },
+        }),
+      ),
+    );
+
+    const updatedCard = await prisma.card.findUnique({
       where: { id: cardId },
-      data: {
-        listId: newListId,
-        position: newPosition,
-      },
       select: { id: true, title: true, description: true, position: true, listId: true },
     });
 

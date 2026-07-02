@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { LayoutDashboard, LogOut } from 'lucide-react';
 import {
   DndContext,
+  DragOverlay,
   closestCorners,
   PointerSensor,
   useSensor,
@@ -15,14 +16,23 @@ import {
   rectSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import CardItem from '../components/CardItem';
 import ListColumn from '../components/ListColumn';
 import { getAuthHeaders, getCurrentUser, logout } from '../lib/auth-store';
 
 function SortableList({ list, boardId, onCardAdded }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: list.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: list.id,
+    data: {
+      type: 'list',
+      listId: list.id,
+    },
+  });
   const style = {
     transform: CSS.Translate.toString(transform),
     transition,
+    opacity: isDragging ? 0 : 1,
+    pointerEvents: isDragging ? 'none' : undefined,
   };
 
   return (
@@ -41,6 +51,7 @@ export default function BoardView() {
   const [loading, setLoading] = useState(true);
   const [newListTitle, setNewListTitle] = useState('');
   const [creatingList, setCreatingList] = useState(false);
+  const [activeDrag, setActiveDrag] = useState({ type: null, id: null });
 
   const sensors = useSensors(useSensor(PointerSensor));
 
@@ -174,9 +185,30 @@ export default function BoardView() {
     }
   }
 
+  function findCard(cardId) {
+    for (const list of lists) {
+      const card = list.cards.find((c) => c.id === cardId);
+      if (card) return card;
+    }
+    return null;
+  }
+
+  function onDragStart(event) {
+    const { active } = event;
+    const type = active?.data?.current?.type ?? (lists.some((l) => l.id === active.id) ? 'list' : null);
+    setActiveDrag({ type, id: active.id });
+  }
+
+  function onDragCancel() {
+    setActiveDrag({ type: null, id: null });
+  }
+
   function onDragEnd(event) {
     const { active, over } = event;
-    if (!over) return;
+    setActiveDrag({ type: null, id: null });
+    if (!over || !active) {
+      return;
+    }
 
     const overData = over.data?.current;
     const overIndex = overData?.sortable?.index;
@@ -184,11 +216,12 @@ export default function BoardView() {
     const targetIndex = typeof overData?.index === 'number' ? overData.index : overIndex;
 
     // If dragging a list (top-level), reorder lists
-    const isListDrag = lists.findIndex((l) => l.id === active.id) > -1;
+    const isListDrag = lists.some((l) => l.id === active.id);
     if (isListDrag) {
       const oldIndex = lists.findIndex((l) => l.id === active.id);
-      const newIndex = lists.findIndex((l) => l.id === over.id);
-      if (oldIndex !== newIndex) {
+      const targetListId = overData?.type === 'list' ? over.id : overData?.listId;
+      const newIndex = lists.findIndex((l) => l.id === targetListId);
+      if (oldIndex !== newIndex && newIndex !== -1) {
         const newLists = arrayMove(lists, oldIndex, newIndex);
         setLists(newLists);
         Promise.all(
@@ -202,78 +235,57 @@ export default function BoardView() {
       return;
     }
 
-    // Dragging a card: active.id is a card id, over.id is either a card or list id
     const activeContainer = findContainer(active.id);
     const overContainer = getContainerFromOver(over.id, overData);
     if (!activeContainer || !overContainer) return;
 
+    const activeList = lists.find((l) => l.id === activeContainer);
+    if (!activeList) return;
+
     if (activeContainer === overContainer) {
-      setLists((prev) =>
-        prev.map((l) => {
-          if (l.id !== activeContainer) return l;
+      const oldIndex = activeList.cards.findIndex((c) => c.id === active.id);
+      if (oldIndex === -1 || over.id === active.id) return;
 
-          const oldIndex = l.cards.findIndex((c) => c.id === active.id);
-          const resolvedTargetIndex = typeof targetIndex === 'number' ? targetIndex : null;
+      let newIndex = oldIndex;
+      if (overType === 'list' || overType === 'list-end' || over.id === activeContainer) {
+        newIndex = activeList.cards.length - 1;
+      } else if (typeof targetIndex === 'number') {
+        newIndex = targetIndex;
+      }
 
-          if (over.id === active.id) {
-            return l;
-          }
+      if (newIndex === oldIndex) return;
 
-          if (typeof resolvedTargetIndex === 'number' && resolvedTargetIndex >= 0 && over.id !== active.id) {
-            const nextCards = [...l.cards];
-            const [moved] = nextCards.splice(oldIndex, 1);
-            const insertIndex = resolvedTargetIndex > oldIndex ? resolvedTargetIndex : resolvedTargetIndex;
-            nextCards.splice(insertIndex, 0, moved);
-            moveCardInDatabase(active.id, l.id, insertIndex).catch(() => {
-              console.error('Falha ao sincronizar com DB');
-            });
-            return { ...l, cards: nextCards };
-          }
-
-          if (overType === 'list' || over.id === l.id || overType === 'list-end') {
-            const nextCards = [...l.cards];
-            const [moved] = nextCards.splice(oldIndex, 1);
-            nextCards.push(moved);
-            moveCardInDatabase(active.id, l.id, nextCards.length - 1).catch(() => {
-              console.error('Falha ao sincronizar com DB');
-            });
-            return { ...l, cards: nextCards };
-          }
-
-          return l;
-        }),
-      );
+      const nextCards = arrayMove(activeList.cards, oldIndex, newIndex);
+      setLists((prev) => prev.map((l) => (l.id === activeContainer ? { ...l, cards: nextCards } : l)));
+      moveCardInDatabase(active.id, activeContainer, newIndex).catch(() => {
+        console.error('Falha ao sincronizar com DB');
+      });
       return;
     }
 
-    setLists((prev) => {
-      const sourceListIndex = prev.findIndex((l) => l.id === activeContainer);
-      const destListIndex = prev.findIndex((l) => l.id === overContainer);
-      if (sourceListIndex === -1 || destListIndex === -1) return prev;
+    const sourceList = lists.find((l) => l.id === activeContainer);
+    const destList = lists.find((l) => l.id === overContainer);
+    if (!sourceList || !destList) return;
 
-      const sourceList = { ...prev[sourceListIndex] };
-      const destList = { ...prev[destListIndex] };
+    const cardIndex = sourceList.cards.findIndex((c) => c.id === active.id);
+    if (cardIndex === -1) return;
 
-      const cardIndex = sourceList.cards.findIndex((c) => c.id === active.id);
-      const [moved] = sourceList.cards.splice(cardIndex, 1);
+    const movedCard = sourceList.cards[cardIndex];
+    const nextSourceCards = sourceList.cards.filter((c) => c.id !== active.id);
+    const insertIndex = typeof targetIndex === 'number' ? targetIndex : destList.cards.length;
+    const nextDestCards = [...destList.cards];
+    nextDestCards.splice(insertIndex, 0, movedCard);
 
-      let newPosition = destList.cards.length;
-      if (typeof targetIndex === 'number' && targetIndex >= 0) {
-        newPosition = targetIndex;
-      } else if (overType === 'list' || overType === 'list-end' || over.id === overContainer) {
-        newPosition = destList.cards.length;
-      }
+    setLists((prev) =>
+      prev.map((l) => {
+        if (l.id === sourceList.id) return { ...l, cards: nextSourceCards };
+        if (l.id === destList.id) return { ...l, cards: nextDestCards };
+        return l;
+      }),
+    );
 
-      destList.cards.splice(newPosition, 0, moved);
-
-      moveCardInDatabase(active.id, overContainer, newPosition).catch(() => {
-        console.error('Falha ao sincronizar com DB');
-      });
-
-      const newLists = [...prev];
-      newLists[sourceListIndex] = sourceList;
-      newLists[destListIndex] = destList;
-      return newLists;
+    moveCardInDatabase(active.id, overContainer, insertIndex).catch(() => {
+      console.error('Falha ao sincronizar com DB');
     });
   }
 
@@ -284,8 +296,8 @@ export default function BoardView() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-50">
-        <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur">
+      <div className="min-h-screen bg-slate-950 text-slate-50 overflow-x-auto">
+        <header className="sticky top-0 left-0 right-0 z-50 border-b border-slate-800 bg-slate-900/90 backdrop-blur">
           <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-400 text-slate-950">
@@ -297,9 +309,6 @@ export default function BoardView() {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <Link to="/dashboard" className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100 transition hover:bg-slate-700">
-                Dashboard
-              </Link>
               <button
                 type="button"
                 onClick={handleLogout}
@@ -311,7 +320,7 @@ export default function BoardView() {
             </div>
           </div>
         </header>
-        <div className="flex min-h-[calc(100vh-73px)] items-center justify-center px-4 py-8">
+        <div className="pt-[73px] flex min-h-[calc(100vh-73px)] items-center justify-center px-4 py-8">
           <div className="text-slate-400">A carregar...</div>
         </div>
       </div>
@@ -320,7 +329,7 @@ export default function BoardView() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 overflow-x-auto">
-      <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur">
+      <header className="sticky top-0 left-0 right-0 z-50 border-b border-slate-800 bg-slate-900/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-400 text-slate-950">
@@ -332,9 +341,6 @@ export default function BoardView() {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <Link to="/dashboard" className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm font-medium text-slate-100 transition hover:bg-slate-700">
-              Dashboard
-            </Link>
             <button
               type="button"
               onClick={handleLogout}
@@ -346,52 +352,90 @@ export default function BoardView() {
           </div>
         </div>
       </header>
+      <main className="px-4 py-8 pt-16">
+          <div className="mx-auto max-w-6xl">
+            <div className="mb-6 flex items-center justify-between">
+              <h2 className="text-2xl font-semibold">Board: {boardTitle ?? id}</h2>
+              <Link to="/dashboard" className="text-sm text-cyan-300 hover:underline">Voltar</Link>
+            </div>
 
-      <main className="px-4 py-8">
-        <div className="mx-auto max-w-6xl">
-          <div className="mb-6 flex items-center justify-between">
-            <h2 className="text-2xl font-semibold">Board: {boardTitle ?? id}</h2>
-            <Link to="/dashboard" className="text-sm text-cyan-300 hover:underline">Voltar</Link>
-          </div>
-
-          <DndContext sensors={sensors} collisionDetection={closestCorners} onDragEnd={onDragEnd}>
-            <SortableContext items={lists.map((l) => l.id)} strategy={rectSortingStrategy}>
-              <div className="flex gap-4 pb-4 min-w-max">
-                {lists.map((list) => (
-                  <SortableList
-                    key={list.id}
-                    list={list}
-                    boardId={id}
-                    onCardAdded={(card) => {
-                      setLists((prev) => prev.map((l) => (l.id === list.id ? { ...l, cards: [...l.cards, card] } : l)));
-                    }}
-                  />
-                ))}
-
-                {/* Nova lista */}
-                <div className="min-w-[280px]">
-                  <form onSubmit={handleCreateList} className="rounded-2xl border border-slate-700 bg-slate-900/50 p-4">
-                    <input
-                      type="text"
-                      placeholder="Nova lista..."
-                      value={newListTitle}
-                      onChange={(e) => setNewListTitle(e.target.value)}
-                      className="w-full bg-slate-800 text-sm text-white placeholder-slate-500 rounded px-2 py-2 border border-slate-700 focus:outline-none focus:border-cyan-500"
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCorners}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
+              onDragCancel={onDragCancel}
+            >
+              <SortableContext items={lists.map((l) => l.id)} strategy={rectSortingStrategy}>
+                <div className="flex gap-4 pb-4 min-w-max">
+                  {lists.map((list) => (
+                    <SortableList
+                      key={list.id}
+                      list={list}
+                      boardId={id}
+                      onCardAdded={(card) => {
+                        setLists((prev) => prev.map((l) => (l.id === list.id ? { ...l, cards: [...l.cards, card] } : l)));
+                      }}
                     />
-                    <button
-                      type="submit"
-                      disabled={creatingList || !newListTitle.trim()}
-                      className="mt-3 w-full bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded transition"
-                    >
-                      {creatingList ? 'A criar...' : 'Criar Lista'}
-                    </button>
-                  </form>
+                  ))}
+
+                  {/* Nova lista */}
+                  <div className="min-w-[280px]">
+                    <form onSubmit={handleCreateList} className="rounded-2xl border border-slate-700 bg-slate-900/50 p-4">
+                      <input
+                        type="text"
+                        placeholder="Nova lista..."
+                        value={newListTitle}
+                        onChange={(e) => setNewListTitle(e.target.value)}
+                        className="w-full bg-slate-800 text-sm text-white placeholder-slate-500 rounded px-2 py-2 border border-slate-700 focus:outline-none focus:border-cyan-500"
+                      />
+                      <button
+                        type="submit"
+                        disabled={creatingList || !newListTitle.trim()}
+                        className="mt-3 w-full bg-cyan-600 hover:bg-cyan-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded transition"
+                      >
+                        {creatingList ? 'A criar...' : 'Criar Lista'}
+                      </button>
+                    </form>
+                  </div>
                 </div>
-              </div>
-            </SortableContext>
-          </DndContext>
-        </div>
-      </main>
-    </div>
+              </SortableContext>
+
+              <DragOverlay>
+                {activeDrag.type === 'card' ? (
+                  <div className="w-[280px] opacity-95">
+                    <CardItem card={findCard(activeDrag.id)} />
+                  </div>
+                ) : null}
+                {activeDrag.type === 'list' ? (
+                  <div className="min-w-[280px] rounded-2xl border border-slate-800 bg-slate-900/90 p-4 opacity-95">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-semibold text-white">
+                        {lists.find((l) => l.id === activeDrag.id)?.title}
+                      </h4>
+                      <div className="text-xs text-slate-400">
+                        {lists.find((l) => l.id === activeDrag.id)?.cards.length}
+                      </div>
+                    </div>
+                    <div className="mt-3 space-y-3">
+                      {lists
+                        .find((l) => l.id === activeDrag.id)
+                        ?.cards.slice(0, 3)
+                        .map((card) => (
+                          <div key={card.id} className="rounded-xl border border-slate-800 bg-slate-800/50 p-3 text-sm text-slate-100">
+                            <div className="font-medium">{card.title}</div>
+                          </div>
+                        ))}
+                      {lists.find((l) => l.id === activeDrag.id)?.cards.length > 3 ? (
+                        <div className="text-xs text-slate-500">+ more</div>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
+          </div>
+        </main>
+      </div>
   );
 }

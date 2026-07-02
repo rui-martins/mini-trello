@@ -1,17 +1,43 @@
 import { useState } from 'react';
 import { SortableContext } from '@dnd-kit/sortable';
 import { rectSortingStrategy } from '@dnd-kit/sortable';
-import { useDroppable, useDndMonitor } from '@dnd-kit/core';
+import { useDroppable } from '@dnd-kit/core';
+import { useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import CardItem from './CardItem';
 import { getAuthHeaders } from '../lib/auth-store';
+
+function SortableCard({ card, listId, index }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: card.id,
+    data: {
+      type: 'card',
+      cardId: card.id,
+      listId,
+      index,
+    },
+  });
+  const style = {
+    transform: CSS.Translate.toString(transform),
+    transition,
+    opacity: isDragging ? 0 : 1,
+    pointerEvents: isDragging ? 'none' : undefined,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <CardItem card={card} />
+    </div>
+  );
+}
 
 export default function ListColumn({ list, boardId, onCardAdded, dragHandleProps }) {
   const [newCardTitle, setNewCardTitle] = useState('');
   const [creatingCard, setCreatingCard] = useState(false);
   const [isAddingCard, setIsAddingCard] = useState(false);
-  const [activeDropIndex, setActiveDropIndex] = useState(null);
   
   // Zona de drop para listas vazias
+  const isEmpty = list.cards.length === 0;
   const { setNodeRef } = useDroppable({
     id: list.id,
     data: {
@@ -30,40 +56,7 @@ export default function ListColumn({ list, boardId, onCardAdded, dragHandleProps
     },
   });
 
-  useDndMonitor({
-    onDragOver(event) {
-      const { over } = event;
-      if (!over) {
-        setActiveDropIndex(null);
-        return;
-      }
-
-      const overData = over.data?.current;
-      if (overData?.type === 'card') {
-        setActiveDropIndex(overData.index);
-        return;
-      }
-
-      if (overData?.type === 'list-end') {
-        setActiveDropIndex(list.cards.length);
-        return;
-      }
-
-      if (overData?.type === 'list' && list.cards.length === 0) {
-        setActiveDropIndex(0);
-        return;
-      }
-
-      setActiveDropIndex(null);
-    },
-    onDragEnd() {
-      setActiveDropIndex(null);
-    },
-  });
-
-  // Criar um placeholder ID quando a lista está vazia para permitir drop
-  const placeholderId = list.cards.length === 0 ? `empty-${list.id}` : null;
-  const sortableItems = placeholderId ? [placeholderId] : list.cards.map((c) => c.id);
+  const sortableItems = list.cards.map((c) => c.id);
 
   async function handleCreateCard(e) {
     e.preventDefault();
@@ -100,20 +93,13 @@ export default function ListColumn({ list, boardId, onCardAdded, dragHandleProps
       </div>
 
       <SortableContext items={sortableItems} strategy={rectSortingStrategy}>
-        <div ref={setNodeRef} className="mt-3 min-h-[60px] flex flex-col gap-3">
+        <div ref={isEmpty ? setNodeRef : undefined} className="mt-3 min-h-[60px] flex flex-col gap-3">
           {list.cards.map((card, index) => (
             <div key={card.id}>
-              {activeDropIndex === index && (
-                <div className="mb-2 rounded-xl border border-dashed border-slate-600 bg-slate-800/40 p-3" />
-              )}
-              <CardItem card={card} listId={list.id} index={index} />
+              <SortableCard card={card} listId={list.id} index={index} />
             </div>
           ))}
-
-          {activeDropIndex === list.cards.length && (
-            <div className="rounded-xl border border-dashed border-slate-600 bg-slate-800/40 p-3" />
-          )}
-          <div ref={setEndDropRef} className="mt-1 h-10 rounded border border-dashed border-transparent transition hover:border-cyan-500/50" />
+          <div ref={setEndDropRef} className="h-3 opacity-0" />
         </div>
       </SortableContext>
 

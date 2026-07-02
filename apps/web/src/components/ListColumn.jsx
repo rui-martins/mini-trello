@@ -7,7 +7,7 @@ import { CSS } from '@dnd-kit/utilities';
 import CardItem from './CardItem';
 import { getAuthHeaders } from '../lib/auth-store';
 
-function SortableCard({ card, listId, index }) {
+function SortableCard({ card, listId, index, onEditCard, onDeleteCard }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: card.id,
     data: {
@@ -25,13 +25,13 @@ function SortableCard({ card, listId, index }) {
   };
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <CardItem card={card} />
+    <div ref={setNodeRef} style={style} {...attributes}>
+      <CardItem card={card} listId={listId} onEdit={onEditCard} onDelete={onDeleteCard} dragHandleProps={listeners} />
     </div>
   );
 }
 
-export default function ListColumn({ list, boardId, onCardAdded, dragHandleProps }) {
+export default function ListColumn({ list, boardId, onCardAdded, onEditCard, onDeleteCard, dragHandleProps }) {
   const [newCardTitle, setNewCardTitle] = useState('');
   const [creatingCard, setCreatingCard] = useState(false);
   const [isAddingCard, setIsAddingCard] = useState(false);
@@ -96,7 +96,7 @@ export default function ListColumn({ list, boardId, onCardAdded, dragHandleProps
         <div ref={isEmpty ? setNodeRef : undefined} className="mt-3 min-h-[60px] flex flex-col gap-3">
           {list.cards.map((card, index) => (
             <div key={card.id}>
-              <SortableCard card={card} listId={list.id} index={index} />
+              <SortableCard card={card} listId={list.id} index={index} onEditCard={onEditCard} onDeleteCard={onDeleteCard} />
             </div>
           ))}
           <div ref={setEndDropRef} className="h-3 opacity-0" />

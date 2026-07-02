@@ -18,9 +18,10 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import CardItem from '../components/CardItem';
 import ListColumn from '../components/ListColumn';
+import EditCardModal from '../components/EditCardModal';
 import { getAuthHeaders, getCurrentUser, logout } from '../lib/auth-store';
 
-function SortableList({ list, boardId, onCardAdded }) {
+function SortableList({ list, boardId, onCardAdded, onEditCard, onDeleteCard }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: list.id,
     data: {
@@ -37,7 +38,7 @@ function SortableList({ list, boardId, onCardAdded }) {
 
   return (
     <div ref={setNodeRef} style={style} className="min-w-[280px]">
-      <ListColumn list={list} boardId={boardId} onCardAdded={onCardAdded} dragHandleProps={{ ...attributes, ...listeners }} />
+      <ListColumn list={list} boardId={boardId} onCardAdded={onCardAdded} onEditCard={onEditCard} onDeleteCard={onDeleteCard} dragHandleProps={{ ...attributes, ...listeners }} />
     </div>
   );
 }
@@ -52,6 +53,10 @@ export default function BoardView() {
   const [newListTitle, setNewListTitle] = useState('');
   const [creatingList, setCreatingList] = useState(false);
   const [activeDrag, setActiveDrag] = useState({ type: null, id: null });
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingCard, setEditingCard] = useState(null);
+  const [editingListId, setEditingListId] = useState(null);
+  const [isSavingCard, setIsSavingCard] = useState(false);
 
   const sensors = useSensors(useSensor(PointerSensor));
 
@@ -289,6 +294,94 @@ export default function BoardView() {
     });
   }
 
+  function handleEditCard(listId, cardId, currentTitle) {
+    const card = lists
+      .find((l) => l.id === listId)
+      ?.cards.find((c) => c.id === cardId);
+    if (!card) return;
+    
+    setEditingCard({ ...card, cardId });
+    setEditingListId(listId);
+    setIsEditModalOpen(true);
+  }
+
+  async function handleSaveCard(newTitle, newDescription) {
+    if (!editingCard || !editingListId) return;
+
+    try {
+      setIsSavingCard(true);
+      const res = await fetch(
+        `/api/boards/${id}/lists/${editingListId}/cards/${editingCard.cardId}`,
+        {
+          method: 'PATCH',
+          headers: {
+            ...getAuthHeaders(),
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: newTitle,
+            description: newDescription,
+          }),
+        }
+      );
+
+      if (!res.ok) {
+        throw new Error('Erro ao atualizar card');
+      }
+
+      const updatedCard = await res.json();
+      setLists((prev) =>
+        prev.map((l) =>
+          l.id === editingListId
+            ? {
+                ...l,
+                cards: l.cards.map((c) =>
+                  c.id === editingCard.cardId ? updatedCard : c
+                ),
+              }
+            : l
+        )
+      );
+      setIsEditModalOpen(false);
+      setEditingCard(null);
+      setEditingListId(null);
+    } catch (err) {
+      console.error('Erro ao editar card:', err);
+      alert('Erro ao editar card');
+    } finally {
+      setIsSavingCard(false);
+    }
+  }
+
+  async function handleDeleteCard(listId, cardId) {
+    if (!window.confirm('Tem a certeza que quer deletar este card?')) return;
+
+    try {
+      const res = await fetch(`/api/boards/${id}/lists/${listId}/cards/${cardId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+
+      if (!res.ok) {
+        throw new Error('Erro ao deletar card');
+      }
+
+      setLists((prev) =>
+        prev.map((l) =>
+          l.id === listId
+            ? {
+                ...l,
+                cards: l.cards.filter((c) => c.id !== cardId),
+              }
+            : l,
+        ),
+      );
+    } catch (err) {
+      console.error('Erro ao deletar card:', err);
+      alert('Erro ao deletar card');
+    }
+  }
+
   function handleLogout() {
     logout();
     navigate('/login', { replace: true });
@@ -376,6 +469,8 @@ export default function BoardView() {
                       onCardAdded={(card) => {
                         setLists((prev) => prev.map((l) => (l.id === list.id ? { ...l, cards: [...l.cards, card] } : l)));
                       }}
+                      onEditCard={handleEditCard}
+                      onDeleteCard={handleDeleteCard}
                     />
                   ))}
 
@@ -436,6 +531,18 @@ export default function BoardView() {
             </DndContext>
           </div>
         </main>
+
+        <EditCardModal
+          card={editingCard}
+          isOpen={isEditModalOpen}
+          onClose={() => {
+            setIsEditModalOpen(false);
+            setEditingCard(null);
+            setEditingListId(null);
+          }}
+          onSave={handleSaveCard}
+          isSaving={isSavingCard}
+        />
       </div>
   );
 }

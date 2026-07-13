@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { LayoutDashboard, LogOut, Trash2 } from 'lucide-react';
 import {
@@ -21,6 +21,7 @@ import ListColumn from '../components/ListColumn';
 import EditCardModal from '../components/EditCardModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { getAuthHeaders, getCurrentUser, logout } from '../lib/auth-store';
+import { matchesCardTitleSearch } from '../lib/card-search';
 
 function SortableList({ list, boardId, onCardAdded, onEditCard, onDeleteCard, onDeleteList }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -58,6 +59,8 @@ export default function BoardView() {
   const [editingCard, setEditingCard] = useState(null);
   const [editingListId, setEditingListId] = useState(null);
   const [isSavingCard, setIsSavingCard] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const dragInitialListsRef = useRef([]);
   const [confirmState, setConfirmState] = useState({ open: false, type: null, targetId: null });
 
   const sensors = useSensors(useSensor(PointerSensor));
@@ -153,6 +156,13 @@ export default function BoardView() {
     return null;
   }
 
+  function getOverIndex(overData) {
+    if (!overData) return null;
+    if (typeof overData?.sortable?.index === 'number') return overData.sortable.index;
+    if (typeof overData?.index === 'number') return overData.index;
+    return null;
+  }
+
   async function moveCardInDatabase(cardId, newListId, newPosition) {
     try {
       const res = await fetch(`/api/boards/${id}/cards/${cardId}/move`, {
@@ -204,25 +214,68 @@ export default function BoardView() {
     const { active } = event;
     const type = active?.data?.current?.type ?? (lists.some((l) => l.id === active.id) ? 'list' : null);
     setActiveDrag({ type, id: active.id });
+    dragInitialListsRef.current = lists.map((list) => ({ ...list, cards: [...list.cards] }));
+  }
+
+  function onDragOver(event) {
+    const { active, over } = event;
+    if (!over || !active || active.id === over.id) return;
+
+    const overData = over.data?.current;
+    const activeContainer = findContainer(active.id);
+    const overContainer = getContainerFromOver(over.id, overData);
+    if (!activeContainer || !overContainer) return;
+
+    const sourceList = lists.find((l) => l.id === activeContainer);
+    const destList = lists.find((l) => l.id === overContainer);
+    if (!sourceList || !destList) return;
+
+    if (activeContainer === overContainer) {
+      const oldIndex = sourceList.cards.findIndex((c) => c.id === active.id);
+      const overIndex = overData?.sortable?.index;
+      if (oldIndex !== -1 && typeof overIndex === 'number' && oldIndex !== overIndex) {
+        const nextCards = arrayMove(sourceList.cards, oldIndex, overIndex);
+        setLists((prev) => prev.map((l) => (l.id === activeContainer ? { ...l, cards: nextCards } : l)));
+      }
+      return;
+    }
+
+    const activeIndex = sourceList.cards.findIndex((c) => c.id === active.id);
+    if (activeIndex === -1) return;
+
+    const movedCard = sourceList.cards[activeIndex];
+    const nextSourceCards = sourceList.cards.filter((c) => c.id !== active.id);
+    const targetIndex = typeof overData?.sortable?.index === 'number' ? overData.sortable.index : overData?.index;
+    const insertIndex = typeof targetIndex === 'number' ? targetIndex : destList.cards.length;
+    const nextDestCards = [...destList.cards];
+    nextDestCards.splice(insertIndex, 0, movedCard);
+
+    setLists((prev) =>
+      prev.map((l) => {
+        if (l.id === sourceList.id) return { ...l, cards: nextSourceCards };
+        if (l.id === destList.id) return { ...l, cards: nextDestCards };
+        return l;
+      }),
+    );
   }
 
   function onDragCancel() {
+    if (dragInitialListsRef.current.length) {
+      setLists(dragInitialListsRef.current);
+    }
     setActiveDrag({ type: null, id: null });
+    dragInitialListsRef.current = [];
   }
 
   function onDragEnd(event) {
     const { active, over } = event;
     setActiveDrag({ type: null, id: null });
     if (!over || !active) {
+      dragInitialListsRef.current = [];
       return;
     }
 
     const overData = over.data?.current;
-    const overIndex = overData?.sortable?.index;
-    const overType = overData?.type;
-    const targetIndex = typeof overData?.index === 'number' ? overData.index : overIndex;
-
-    // If dragging a list (top-level), reorder lists
     const isListDrag = lists.some((l) => l.id === active.id);
     if (isListDrag) {
       const oldIndex = lists.findIndex((l) => l.id === active.id);
@@ -239,61 +292,39 @@ export default function BoardView() {
           }),
         );
       }
+      dragInitialListsRef.current = [];
       return;
     }
 
-    const activeContainer = findContainer(active.id);
-    const overContainer = getContainerFromOver(over.id, overData);
-    if (!activeContainer || !overContainer) return;
-
-    const activeList = lists.find((l) => l.id === activeContainer);
-    if (!activeList) return;
-
-    if (activeContainer === overContainer) {
-      const oldIndex = activeList.cards.findIndex((c) => c.id === active.id);
-      if (oldIndex === -1 || over.id === active.id) return;
-
-      let newIndex = oldIndex;
-      if (overType === 'list' || overType === 'list-end' || over.id === activeContainer) {
-        newIndex = activeList.cards.length - 1;
-      } else if (typeof targetIndex === 'number') {
-        newIndex = targetIndex;
-      }
-
-      if (newIndex === oldIndex) return;
-
-      const nextCards = arrayMove(activeList.cards, oldIndex, newIndex);
-      setLists((prev) => prev.map((l) => (l.id === activeContainer ? { ...l, cards: nextCards } : l)));
-      moveCardInDatabase(active.id, activeContainer, newIndex).catch(() => {
-        console.error('Falha ao sincronizar com DB');
-      });
+    const finalListId = findContainer(active.id) || getContainerFromOver(over.id, overData);
+    if (!finalListId) {
+      dragInitialListsRef.current = [];
       return;
     }
 
-    const sourceList = lists.find((l) => l.id === activeContainer);
-    const destList = lists.find((l) => l.id === overContainer);
-    if (!sourceList || !destList) return;
+    const finalList = lists.find((l) => l.id === finalListId);
+    if (!finalList) {
+      dragInitialListsRef.current = [];
+      return;
+    }
 
-    const cardIndex = sourceList.cards.findIndex((c) => c.id === active.id);
-    if (cardIndex === -1) return;
+    const finalIndex = finalList.cards.findIndex((c) => c.id === active.id);
+    const fallbackIndex = getOverIndex(overData);
+    const newIndex = finalIndex !== -1 ? finalIndex : typeof fallbackIndex === 'number' ? fallbackIndex : finalList.cards.length;
 
-    const movedCard = sourceList.cards[cardIndex];
-    const nextSourceCards = sourceList.cards.filter((c) => c.id !== active.id);
-    const insertIndex = typeof targetIndex === 'number' ? targetIndex : destList.cards.length;
-    const nextDestCards = [...destList.cards];
-    nextDestCards.splice(insertIndex, 0, movedCard);
+    const sourceList = dragInitialListsRef.current.find((l) => l.cards.some((c) => c.id === active.id));
+    const sourceListId = sourceList?.id || active.data?.current?.listId || null;
+    const sourceOldIndex = sourceList?.cards.findIndex((c) => c.id === active.id);
 
-    setLists((prev) =>
-      prev.map((l) => {
-        if (l.id === sourceList.id) return { ...l, cards: nextSourceCards };
-        if (l.id === destList.id) return { ...l, cards: nextDestCards };
-        return l;
-      }),
-    );
+    if (sourceListId && sourceListId === finalListId && sourceOldIndex === newIndex) {
+      dragInitialListsRef.current = [];
+      return;
+    }
 
-    moveCardInDatabase(active.id, overContainer, insertIndex).catch(() => {
+    moveCardInDatabase(active.id, finalListId, newIndex).catch(() => {
       console.error('Falha ao sincronizar com DB');
     });
+    dragInitialListsRef.current = [];
   }
 
   function handleEditCard(listId, cardId, currentTitle) {
@@ -439,6 +470,14 @@ export default function BoardView() {
     navigate('/login', { replace: true });
   }
 
+  const visibleLists = lists.map((list) => ({
+    ...list,
+    cards: list.cards.filter((card) => matchesCardTitleSearch(card.title, searchQuery)),
+  }));
+
+  const hasActiveSearch = searchQuery.trim().length > 0;
+  const hasVisibleCards = visibleLists.some((list) => list.cards.length > 0);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-50 overflow-x-auto">
@@ -512,16 +551,34 @@ export default function BoardView() {
               <Link to="/dashboard" className="text-sm text-cyan-300 hover:underline">Voltar</Link>
             </div>
 
+            <div className="mb-6 flex max-w-sm items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-2">
+              <input
+                id="card-search"
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Pesquisar card..."
+                className="w-full bg-transparent text-sm text-white placeholder-slate-500 focus:outline-none"
+              />
+            </div>
+
+            {hasActiveSearch && !hasVisibleCards ? (
+              <div className="mb-4 rounded-xl border border-slate-800 bg-slate-900/60 p-3 text-sm text-slate-400">
+                Nenhum card encontrado para esta pesquisa.
+              </div>
+            ) : null}
+
             <DndContext
               sensors={sensors}
               collisionDetection={closestCorners}
               onDragStart={onDragStart}
+              onDragOver={onDragOver}
               onDragEnd={onDragEnd}
               onDragCancel={onDragCancel}
             >
-              <SortableContext items={lists.map((l) => l.id)} strategy={rectSortingStrategy}>
+              <SortableContext items={visibleLists.map((l) => l.id)} strategy={rectSortingStrategy}>
                 <div className="flex gap-4 pb-4 min-w-max">
-                  {lists.map((list) => (
+                  {visibleLists.map((list) => (
                     <SortableList
                       key={list.id}
                       list={list}

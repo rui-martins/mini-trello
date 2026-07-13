@@ -1,8 +1,6 @@
 import { useState } from 'react';
-import { SortableContext } from '@dnd-kit/sortable';
-import { rectSortingStrategy } from '@dnd-kit/sortable';
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useDroppable } from '@dnd-kit/core';
-import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import CardItem from './CardItem';
 import { getAuthHeaders } from '../lib/auth-store';
@@ -16,6 +14,8 @@ function SortableCard({ card, listId, index, onEditCard, onDeleteCard }) {
       listId,
       index,
     },
+    animateLayoutChanges: () => true,
+    layoutTransition: { duration: 200, easing: 'ease' },
   });
   const style = {
     transform: CSS.Translate.toString(transform),
@@ -105,7 +105,7 @@ export default function ListColumn({ list, boardId, onCardAdded, onEditCard, onD
         </button>
       </div>
 
-      <SortableContext items={sortableItems} strategy={rectSortingStrategy}>
+      <SortableContext items={sortableItems} strategy={verticalListSortingStrategy}>
         <div ref={isEmpty ? setNodeRef : undefined} className="mt-3 min-h-[60px] flex flex-col gap-3">
           {list.cards.map((card, index) => (
             <div key={card.id}>

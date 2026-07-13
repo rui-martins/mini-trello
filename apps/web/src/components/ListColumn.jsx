@@ -31,7 +31,7 @@ function SortableCard({ card, listId, index, onEditCard, onDeleteCard }) {
   );
 }
 
-export default function ListColumn({ list, boardId, onCardAdded, onEditCard, onDeleteCard, dragHandleProps }) {
+export default function ListColumn({ list, boardId, onCardAdded, onEditCard, onDeleteCard, onDeleteList, dragHandleProps }) {
   const [newCardTitle, setNewCardTitle] = useState('');
   const [creatingCard, setCreatingCard] = useState(false);
   const [isAddingCard, setIsAddingCard] = useState(false);
@@ -87,9 +87,22 @@ export default function ListColumn({ list, boardId, onCardAdded, onEditCard, onD
 
   return (
     <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-      <div className="flex items-center justify-between" {...dragHandleProps}>
-        <h4 className="text-sm font-semibold text-white">{list.title}</h4>
-        <div className="text-xs text-slate-400">{list.cards.length}</div>
+      <div className="flex items-center justify-between">
+        <div className="min-w-0 flex-1" {...dragHandleProps}>
+          <h4 className="cursor-grab text-sm font-semibold text-white">{list.title}</h4>
+          <div className="text-xs text-slate-400">{list.cards.length}</div>
+        </div>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onDeleteList?.(list.id);
+          }}
+          className="ml-2 rounded-md border border-red-800/60 bg-red-950/40 px-2 py-1 text-[11px] font-medium text-red-200 transition hover:bg-red-900/60"
+        >
+          Eliminar
+        </button>
       </div>
 
       <SortableContext items={sortableItems} strategy={rectSortingStrategy}>

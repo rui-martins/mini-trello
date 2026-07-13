@@ -45,3 +45,12 @@ export function buildCardPositionUpdates({
 
   return updates;
 }
+
+export function buildListPositionUpdates(lists, deletedListId) {
+  return lists
+    .filter((list) => list.id !== deletedListId)
+    .map((list, index) => ({
+      id: list.id,
+      position: index,
+    }));
+}

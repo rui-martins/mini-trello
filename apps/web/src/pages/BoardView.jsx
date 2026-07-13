@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { LayoutDashboard, LogOut } from 'lucide-react';
+import { LayoutDashboard, LogOut, Trash2 } from 'lucide-react';
 import {
   DndContext,
   DragOverlay,
@@ -19,9 +19,10 @@ import { CSS } from '@dnd-kit/utilities';
 import CardItem from '../components/CardItem';
 import ListColumn from '../components/ListColumn';
 import EditCardModal from '../components/EditCardModal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { getAuthHeaders, getCurrentUser, logout } from '../lib/auth-store';
 
-function SortableList({ list, boardId, onCardAdded, onEditCard, onDeleteCard }) {
+function SortableList({ list, boardId, onCardAdded, onEditCard, onDeleteCard, onDeleteList }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: list.id,
     data: {
@@ -38,7 +39,7 @@ function SortableList({ list, boardId, onCardAdded, onEditCard, onDeleteCard }) 
 
   return (
     <div ref={setNodeRef} style={style} className="min-w-[280px]">
-      <ListColumn list={list} boardId={boardId} onCardAdded={onCardAdded} onEditCard={onEditCard} onDeleteCard={onDeleteCard} dragHandleProps={{ ...attributes, ...listeners }} />
+      <ListColumn list={list} boardId={boardId} onCardAdded={onCardAdded} onEditCard={onEditCard} onDeleteCard={onDeleteCard} onDeleteList={onDeleteList} dragHandleProps={{ ...attributes, ...listeners }} />
     </div>
   );
 }
@@ -57,6 +58,7 @@ export default function BoardView() {
   const [editingCard, setEditingCard] = useState(null);
   const [editingListId, setEditingListId] = useState(null);
   const [isSavingCard, setIsSavingCard] = useState(false);
+  const [confirmState, setConfirmState] = useState({ open: false, type: null, targetId: null });
 
   const sensors = useSensors(useSensor(PointerSensor));
 
@@ -382,6 +384,56 @@ export default function BoardView() {
     }
   }
 
+  function requestDeleteList(listId) {
+    setConfirmState({ open: true, type: 'list', targetId: listId });
+  }
+
+  function requestDeleteBoard() {
+    setConfirmState({ open: true, type: 'board', targetId: id ?? null });
+  }
+
+  async function handleDeleteList(listId) {
+    try {
+      const res = await fetch(`/api/boards/${id}/lists/${listId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+
+      if (!res.ok) {
+        throw new Error('Erro ao eliminar lista');
+      }
+
+      setLists((prev) => prev.filter((list) => list.id !== listId));
+    } catch (err) {
+      console.error('Erro ao eliminar lista:', err);
+      alert('Erro ao eliminar lista');
+    } finally {
+      setConfirmState({ open: false, type: null, targetId: null });
+    }
+  }
+
+  async function handleDeleteBoard(boardId) {
+    if (!boardId) return;
+
+    try {
+      const res = await fetch(`/api/boards/${boardId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+
+      if (!res.ok) {
+        throw new Error('Erro ao eliminar board');
+      }
+
+      navigate('/dashboard', { replace: true });
+    } catch (err) {
+      console.error('Erro ao eliminar board:', err);
+      alert('Erro ao eliminar board');
+    } finally {
+      setConfirmState({ open: false, type: null, targetId: null });
+    }
+  }
+
   function handleLogout() {
     logout();
     navigate('/login', { replace: true });
@@ -436,6 +488,14 @@ export default function BoardView() {
           <div className="flex items-center gap-3">
             <button
               type="button"
+              onClick={requestDeleteBoard}
+              className="inline-flex items-center gap-2 rounded-xl border border-red-800/60 bg-red-950/40 px-4 py-2 text-sm font-medium text-red-200 transition hover:bg-red-900/60 cursor-pointer"
+            >
+              <Trash2 className="h-4 w-4" />
+              Eliminar board
+            </button>
+            <button
+              type="button"
               onClick={handleLogout}
               className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-medium text-slate-100 transition hover:bg-slate-700 cursor-pointer"
             >
@@ -471,6 +531,7 @@ export default function BoardView() {
                       }}
                       onEditCard={handleEditCard}
                       onDeleteCard={handleDeleteCard}
+                      onDeleteList={requestDeleteList}
                     />
                   ))}
 
@@ -542,6 +603,26 @@ export default function BoardView() {
           }}
           onSave={handleSaveCard}
           isSaving={isSavingCard}
+        />
+
+        <ConfirmDialog
+          open={confirmState.open}
+          title={confirmState.type === 'board' ? 'Eliminar board' : 'Eliminar lista'}
+          message={
+            confirmState.type === 'board'
+              ? 'Esta ação remove o board e todo o seu conteúdo. Quer continuar?'
+              : 'Esta ação remove a lista e todos os cartões dentro dela. Quer continuar?'
+          }
+          confirmLabel="Eliminar"
+          cancelLabel="Cancelar"
+          onConfirm={() => {
+            if (confirmState.type === 'board') {
+              handleDeleteBoard(confirmState.targetId);
+            } else if (confirmState.type === 'list') {
+              handleDeleteList(confirmState.targetId);
+            }
+          }}
+          onCancel={() => setConfirmState({ open: false, type: null, targetId: null })}
         />
       </div>
   );

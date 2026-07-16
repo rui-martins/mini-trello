@@ -61,7 +61,7 @@ export default function BoardView() {
   const [isSavingCard, setIsSavingCard] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const dragInitialListsRef = useRef([]);
-  const [confirmState, setConfirmState] = useState({ open: false, type: null, targetId: null });
+  const [confirmState, setConfirmState] = useState({ open: false, type: null, targetId: null, listId: null });
 
   const sensors = useSensors(useSensor(PointerSensor));
 
@@ -386,9 +386,11 @@ export default function BoardView() {
     }
   }
 
-  async function handleDeleteCard(listId, cardId) {
-    if (!window.confirm('Tem a certeza que quer Eliminar este card?')) return;
+  function requestDeleteCard(listId, cardId) {
+    setConfirmState({ open: true, type: 'card', targetId: cardId, listId });
+  }
 
+  async function handleDeleteCard(listId, cardId) {
     try {
       const res = await fetch(`/api/boards/${id}/lists/${listId}/cards/${cardId}`, {
         method: 'DELETE',
@@ -412,11 +414,13 @@ export default function BoardView() {
     } catch (err) {
       console.error('Erro ao Eliminar card:', err);
       alert('Erro ao eliminar card');
+    } finally {
+      setConfirmState({ open: false, type: null, targetId: null, listId: null });
     }
   }
 
   function requestDeleteList(listId) {
-    setConfirmState({ open: true, type: 'list', targetId: listId });
+    setConfirmState({ open: true, type: 'list', targetId: listId, listId: null });
   }
 
   function requestDeleteBoard() {
@@ -439,7 +443,7 @@ export default function BoardView() {
       console.error('Erro ao eliminar lista:', err);
       alert('Erro ao eliminar lista');
     } finally {
-      setConfirmState({ open: false, type: null, targetId: null });
+      setConfirmState({ open: false, type: null, targetId: null, listId: null });
     }
   }
 
@@ -461,7 +465,7 @@ export default function BoardView() {
       console.error('Erro ao eliminar board:', err);
       alert('Erro ao eliminar board');
     } finally {
-      setConfirmState({ open: false, type: null, targetId: null });
+      setConfirmState({ open: false, type: null, targetId: null, listId: null });
     }
   }
 
@@ -587,7 +591,7 @@ export default function BoardView() {
                         setLists((prev) => prev.map((l) => (l.id === list.id ? { ...l, cards: [...l.cards, card] } : l)));
                       }}
                       onEditCard={handleEditCard}
-                      onDeleteCard={handleDeleteCard}
+                      onDeleteCard={requestDeleteCard}
                       onDeleteList={requestDeleteList}
                     />
                   ))}
@@ -664,11 +668,19 @@ export default function BoardView() {
 
         <ConfirmDialog
           open={confirmState.open}
-          title={confirmState.type === 'board' ? 'Eliminar board' : 'Eliminar lista'}
+          title={
+            confirmState.type === 'board'
+              ? 'Eliminar board'
+              : confirmState.type === 'card'
+                ? 'Eliminar tarefa'
+                : 'Eliminar lista'
+          }
           message={
             confirmState.type === 'board'
               ? 'Esta ação remove o board e todo o seu conteúdo. Quer continuar?'
-              : 'Esta ação remove a lista e todos os cartões dentro dela. Quer continuar?'
+              : confirmState.type === 'card'
+                ? 'Esta ação remove a tarefa selecionada. Quer continuar?'
+                : 'Esta ação remove a lista e todos os cartões dentro dela. Quer continuar?'
           }
           confirmLabel="Eliminar"
           cancelLabel="Cancelar"
@@ -677,9 +689,11 @@ export default function BoardView() {
               handleDeleteBoard(confirmState.targetId);
             } else if (confirmState.type === 'list') {
               handleDeleteList(confirmState.targetId);
+            } else if (confirmState.type === 'card') {
+              handleDeleteCard(confirmState.listId, confirmState.targetId);
             }
           }}
-          onCancel={() => setConfirmState({ open: false, type: null, targetId: null })}
+          onCancel={() => setConfirmState({ open: false, type: null, targetId: null, listId: null })}
         />
       </div>
   );

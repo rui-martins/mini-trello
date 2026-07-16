@@ -159,7 +159,7 @@ app.patch('/boards/:boardId/lists/:listId', authenticate, async (req, res, next)
   }
 });
 
-// Deletar uma lista
+// Eliminar uma lista
 app.delete('/boards/:boardId', authenticate, async (req, res, next) => {
   try {
     const { boardId } = req.params;
@@ -314,7 +314,7 @@ app.patch('/boards/:boardId/lists/:listId/cards/:cardId', authenticate, async (r
   }
 });
 
-// Deletar um cartão
+// Eliminar um cartão
 app.delete('/boards/:boardId/lists/:listId/cards/:cardId', authenticate, async (req, res, next) => {
   try {
     const { boardId, listId, cardId } = req.params;

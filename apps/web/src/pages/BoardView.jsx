@@ -387,7 +387,7 @@ export default function BoardView() {
   }
 
   async function handleDeleteCard(listId, cardId) {
-    if (!window.confirm('Tem a certeza que quer deletar este card?')) return;
+    if (!window.confirm('Tem a certeza que quer Eliminar este card?')) return;
 
     try {
       const res = await fetch(`/api/boards/${id}/lists/${listId}/cards/${cardId}`, {
@@ -396,7 +396,7 @@ export default function BoardView() {
       });
 
       if (!res.ok) {
-        throw new Error('Erro ao deletar card');
+        throw new Error('Erro ao eliminar card');
       }
 
       setLists((prev) =>
@@ -410,8 +410,8 @@ export default function BoardView() {
         ),
       );
     } catch (err) {
-      console.error('Erro ao deletar card:', err);
-      alert('Erro ao deletar card');
+      console.error('Erro ao Eliminar card:', err);
+      alert('Erro ao eliminar card');
     }
   }
 

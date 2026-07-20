@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 
-export default function EditCardModal({ card, isOpen, onClose, onSave, isSaving }) {
+export default function EditCardModal({ card, isOpen, onClose, onSave, isSaving, lists = [], currentListId = null, onMove, isMoving = false }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
 
@@ -64,6 +64,22 @@ export default function EditCardModal({ card, isOpen, onClose, onSave, isSaving 
               className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition resize-none"
               disabled={isSaving}
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">Coluna</label>
+            <select
+              value={currentListId ?? ''}
+              onChange={(e) => onMove?.(e.target.value)}
+              disabled={isSaving || isMoving}
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 transition"
+            >
+              {lists.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.title}
+                </option>
+              ))}
+            </select>
           </div>
 
           {/* Buttons */}

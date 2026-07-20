@@ -59,6 +59,7 @@ export default function BoardView() {
   const [editingCard, setEditingCard] = useState(null);
   const [editingListId, setEditingListId] = useState(null);
   const [isSavingCard, setIsSavingCard] = useState(false);
+  const [isMovingCard, setIsMovingCard] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const dragInitialListsRef = useRef([]);
   const [confirmState, setConfirmState] = useState({ open: false, type: null, targetId: null, listId: null });
@@ -386,6 +387,43 @@ export default function BoardView() {
     }
   }
 
+  async function handleMoveCard(newListId) {
+    if (!editingCard || !editingListId || !newListId || newListId === editingListId) return;
+    try {
+      setIsMovingCard(true);
+      const destList = lists.find((l) => l.id === newListId);
+      const position = destList ? destList.cards.length : 0;
+      await moveCardInDatabase(editingCard.cardId, newListId, position);
+
+      setLists((prev) => {
+        const sourceId = editingListId;
+        let movedCard = null;
+        const next = prev.map((l) => {
+          if (l.id === sourceId) {
+            const remaining = l.cards.filter((c) => {
+              if (c.id === editingCard.cardId) {
+                movedCard = c;
+                return false;
+              }
+              return true;
+            });
+            return { ...l, cards: remaining };
+          }
+          return l;
+        });
+
+        return next.map((l) => (l.id === newListId ? { ...l, cards: [...l.cards, movedCard].filter(Boolean) } : l));
+      });
+
+      setEditingListId(newListId);
+    } catch (err) {
+      console.error('Erro ao mover card:', err);
+      alert('Erro ao mover card');
+    } finally {
+      setIsMovingCard(false);
+    }
+  }
+
   function requestDeleteCard(listId, cardId) {
     setConfirmState({ open: true, type: 'card', targetId: cardId, listId });
   }
@@ -664,6 +702,10 @@ export default function BoardView() {
           }}
           onSave={handleSaveCard}
           isSaving={isSavingCard}
+          lists={lists}
+          currentListId={editingListId}
+          onMove={handleMoveCard}
+          isMoving={isMovingCard}
         />
 
         <ConfirmDialog

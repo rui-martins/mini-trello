@@ -29,7 +29,15 @@ export default function CardItem({ card, listId, onEdit, onDelete, dragHandlePro
   };
 
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-800/50 p-3 text-sm text-slate-100 hover:bg-slate-800/70 transition group">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onEdit?.(listId, card.id, card.title)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') onEdit?.(listId, card.id, card.title);
+      }}
+      className="rounded-xl border border-slate-800 bg-slate-800/50 p-3 text-sm text-slate-100 hover:bg-slate-800/70 transition group cursor-pointer"
+    >
       <div className="flex items-start gap-2 mb-2">
         <div
           {...dragHandleProps}

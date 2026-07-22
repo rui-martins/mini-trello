@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildCardPositionUpdates } from './card-ordering.js';
+import { buildCardPositionUpdates, buildListPositionUpdates } from './card-ordering.js';
 
 test('reindexes cards correctly when moving a card to the middle of the same list', () => {
   const cards = [
@@ -47,5 +47,21 @@ test('reindexes cards correctly when moving a card to another list', () => {
     { id: '3', listId: 'list-b', position: 0 },
     { id: '2', listId: 'list-b', position: 1 },
     { id: '4', listId: 'list-b', position: 2 },
+  ]);
+});
+
+test('reindexes remaining lists after deleting one list', () => {
+  const updates = buildListPositionUpdates(
+    [
+      { id: 'list-a', position: 0 },
+      { id: 'list-b', position: 1 },
+      { id: 'list-c', position: 2 },
+    ],
+    'list-b',
+  );
+
+  assert.deepEqual(updates, [
+    { id: 'list-a', position: 0 },
+    { id: 'list-c', position: 1 },
   ]);
 });

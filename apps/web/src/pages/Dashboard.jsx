@@ -1,8 +1,9 @@
-import { LayoutDashboard, LogOut } from 'lucide-react';
+import { LayoutDashboard, LogOut, Trash2 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import Toast from '../components/Toast';
 import NewBoardModal from '../components/NewBoardModal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { getCurrentUser, logout, getToken, getAuthHeaders } from '../lib/auth-store';
 
 export function Dashboard() {
@@ -11,6 +12,7 @@ export function Dashboard() {
   const [flash, setFlash] = useState(null);
   const [boards, setBoards] = useState([]);
   const [showNewBoardModal, setShowNewBoardModal] = useState(false);
+  const [confirmState, setConfirmState] = useState({ open: false, boardId: null });
 
   useEffect(() => {
     try {
@@ -55,6 +57,30 @@ export function Dashboard() {
     const interval = setInterval(checkTokenExpiry, 5000);
     return () => clearInterval(interval);
   }, [navigate]);
+
+  function requestDeleteBoard(boardId) {
+    setConfirmState({ open: true, boardId });
+  }
+
+  async function handleDeleteBoard(boardId) {
+    try {
+      const res = await fetch(`/api/boards/${boardId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+
+      if (!res.ok) {
+        throw new Error('Erro ao eliminar board');
+      }
+
+      setBoards((prev) => prev.filter((board) => board.id !== boardId));
+    } catch (err) {
+      console.error('Erro ao eliminar board:', err);
+      setFlash(err.message || 'Erro ao eliminar board');
+    } finally {
+      setConfirmState({ open: false, boardId: null });
+    }
+  }
 
   function handleLogout() {
     logout();
@@ -139,12 +165,34 @@ export function Dashboard() {
               </>
             ) : (
               boards.map((b) => (
-                <Link key={b.id} to={`/boards/${b.id}`} className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 text-slate-100 hover:bg-slate-800">{b.title}</Link>
+                <div key={b.id} className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 text-slate-100">
+                  <Link to={`/boards/${b.id}`} className="block hover:bg-slate-800/70 rounded-xl p-2 -m-2 transition">
+                    <div className="font-semibold">{b.title}</div>
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => requestDeleteBoard(b.id)}
+                    className="mt-3 inline-flex items-center gap-2 rounded-lg border border-red-800/60 bg-red-950/40 px-3 py-1.5 text-sm font-medium text-red-200 transition hover:bg-red-900/60"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Eliminar
+                  </button>
+                </div>
               ))
             )}
           </div>
         </section>
       </main>
+
+      <ConfirmDialog
+        open={confirmState.open}
+        title="Eliminar board"
+        message="Esta ação remove o board e todo o conteúdo associado. Quer continuar?"
+        confirmLabel="Eliminar"
+        cancelLabel="Cancelar"
+        onConfirm={() => handleDeleteBoard(confirmState.boardId)}
+        onCancel={() => setConfirmState({ open: false, boardId: null })}
+      />
     </div>
   );
 }

@@ -12,7 +12,7 @@ import { register, login, authenticate } from './auth.js';
 import prisma from './db.js';
 import { createBoardSchema, createListSchema, updateListSchema, createCardSchema, updateCardSchema, moveCardSchema } from './schemas.js';
 import AppError from './errors.js';
-import { buildCardPositionUpdates } from './card-ordering.js';
+import { buildCardPositionUpdates, buildListPositionUpdates } from './card-ordering.js';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -159,7 +159,28 @@ app.patch('/boards/:boardId/lists/:listId', authenticate, async (req, res, next)
   }
 });
 
-// Deletar uma lista
+// Eliminar uma lista
+app.delete('/boards/:boardId', authenticate, async (req, res, next) => {
+  try {
+    const { boardId } = req.params;
+
+    const board = await prisma.board.findUnique({
+      where: { id: boardId },
+      select: { ownerId: true },
+    });
+    if (!board) return next(new AppError(404, 'Board não encontrado'));
+    if (board.ownerId !== req.userId) return next(new AppError(403, 'Acesso proibido'));
+
+    await prisma.board.delete({
+      where: { id: boardId },
+    });
+    return res.status(204).send();
+  } catch (err) {
+    if (err.code === 'P2025') return next(new AppError(404, 'Board não encontrado'));
+    return next(err);
+  }
+});
+
 app.delete('/boards/:boardId/lists/:listId', authenticate, async (req, res, next) => {
   try {
     const { boardId, listId } = req.params;
@@ -172,9 +193,28 @@ app.delete('/boards/:boardId/lists/:listId', authenticate, async (req, res, next
     if (!board) return next(new AppError(404, 'Board não encontrado'));
     if (board.ownerId !== req.userId) return next(new AppError(403, 'Acesso proibido'));
 
-    await prisma.list.delete({
+    const deletedList = await prisma.list.delete({
       where: { id: listId },
     });
+
+    const remainingLists = await prisma.list.findMany({
+      where: { boardId },
+      select: { id: true, position: true },
+      orderBy: { position: 'asc' },
+    });
+
+    const listUpdates = buildListPositionUpdates(remainingLists, deletedList.id);
+    if (listUpdates.length > 0) {
+      await prisma.$transaction(
+        listUpdates.map((update) =>
+          prisma.list.update({
+            where: { id: update.id },
+            data: { position: update.position },
+          }),
+        ),
+      );
+    }
+
     return res.status(204).send();
   } catch (err) {
     if (err.code === 'P2025') return next(new AppError(404, 'Lista não encontrada'));
@@ -274,7 +314,7 @@ app.patch('/boards/:boardId/lists/:listId/cards/:cardId', authenticate, async (r
   }
 });
 
-// Deletar um cartão
+// Eliminar um cartão
 app.delete('/boards/:boardId/lists/:listId/cards/:cardId', authenticate, async (req, res, next) => {
   try {
     const { boardId, listId, cardId } = req.params;
